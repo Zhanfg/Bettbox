@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/Zhanfg/mihomo.git",
+  "repository_full_name": "Zhanfg/mihomo",
+  "ref": "opt/smart-production-v9",
+  "commit": "b2e84a05951b5d79217eefa6dec589608d105586",
+  "module": "github.com/metacubex/mihomo",
+  "go_version": "1.25.0",
+  "profile": "smart-portable",
+  "cache_dir": ".smart-core/mihomo",
+  "wrapper_dir": "core"
+}
