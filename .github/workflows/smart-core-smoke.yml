@@ -1,0 +1,58 @@
+name: Smart Core source smoke
+
+on:
+  push:
+    branches:
+      - explore/rootless-smart
+    paths:
+      - smart-core.lock.json
+      - tool/smart_core.dart
+      - setup.dart
+      - core/go.mod
+      - core/go.sum
+      - .github/workflows/smart-core-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Bettbox
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.0'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+          cache: true
+
+      - name: Resolve Dart dependencies
+        run: flutter pub get
+
+      - name: Verify Smart Core sync tool
+        run: |
+          dart format --output=none --set-exit-if-changed tool/smart_core.dart
+          dart analyze tool/smart_core.dart
+
+      - name: Materialize locked Smart Core
+        run: dart run tool/smart_core.dart
+
+      - name: Verify locked source contract
+        run: dart run tool/smart_core.dart --check
+
+      - name: Verify Bettbox wrapper resolves Smart packages
+        working-directory: core
+        run: |
+          go list -modfile=smart.mod -mod=mod github.com/metacubex/mihomo/component/smart
+          go list -modfile=smart.mod -mod=mod github.com/metacubex/mihomo/listener/sing_tun
