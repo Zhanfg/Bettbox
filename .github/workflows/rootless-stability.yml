@@ -1,0 +1,404 @@
+name: Rootless VPN stability
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - explore/rootless-smart
+    paths:
+      - smart-core.lock.json
+      - setup.dart
+      - tool/smart_core.dart
+      - tool/rootless_stability_harness.py
+      - core/**
+      - android/core/**
+      - .github/workflows/rootless-stability.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rootless-stability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable-switch-soak:
+    name: 100K requests / 20 node rotations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GOMEMLIMIT: 192MiB
+      GOMAXPROCS: 4
+
+    steps:
+      - name: Checkout Bettbox
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: core/go.sum
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+          cache: true
+
+      - name: Resolve Dart dependencies
+        run: flutter pub get
+
+      - name: Materialize locked Smart Core
+        run: |
+          dart run tool/smart_core.dart
+          dart run tool/smart_core.dart --check
+
+      - name: Race-check portable Smart state
+        working-directory: .smart-core/mihomo
+        run: |
+          set -euo pipefail
+          go test -race ./component/smart ./adapter/outboundgroup \
+            -run 'Test(OnlineBandit|Distilled|Expert|GreedyExploration|ShouldInvokeTeacher|Student)' \
+            -count=5 -timeout=20m 2>&1 | tee "$GITHUB_WORKSPACE/ROOTLESS_RACE.txt"
+
+      - name: Build rootless Smart core
+        working-directory: .smart-core/mihomo
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -buildvcs=false -tags with_gvisor -trimpath \
+            -ldflags "-w -s -buildid=" \
+            -o "$GITHUB_WORKSPACE/mihomo-rootless"
+          test -x "$GITHUB_WORKSPACE/mihomo-rootless"
+
+      - name: Prepare eight-node rotating network
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/rootless-stability results
+          cat >/tmp/rootless-stability/config.yaml <<'YAML'
+          mixed-port: 17890
+          external-controller: 127.0.0.1:19090
+          allow-lan: false
+          mode: rule
+          log-level: error
+          ipv6: true
+          find-process-mode: off
+          profile:
+            store-selected: false
+            store-fake-ip: false
+          proxies:
+            - {name: NODE-1, type: http, server: 127.0.0.1, port: 18101}
+            - {name: NODE-2, type: http, server: 127.0.0.1, port: 18102}
+            - {name: NODE-3, type: http, server: 127.0.0.1, port: 18103}
+            - {name: NODE-4, type: http, server: 127.0.0.1, port: 18104}
+            - {name: NODE-5, type: http, server: 127.0.0.1, port: 18105}
+            - {name: NODE-6, type: http, server: 127.0.0.1, port: 18106}
+            - {name: NODE-7, type: http, server: 127.0.0.1, port: 18107}
+            - {name: NODE-8, type: http, server: 127.0.0.1, port: 18108}
+          proxy-groups:
+            - name: SMART-ROOTLESS
+              type: smart
+              proxies: [NODE-1, NODE-2, NODE-3, NODE-4, NODE-5, NODE-6, NODE-7, NODE-8]
+              url: http://127.0.0.1:18080/
+              interval: 1
+              lazy: false
+              uselightgbm: false
+              auto-ip-family: true
+              empty-fallback: REJECT
+          rules:
+            - MATCH,SMART-ROOTLESS
+          YAML
+          ./mihomo-rootless -t -d /tmp/rootless-stability -f /tmp/rootless-stability/config.yaml
+
+      - name: Run rootless switch storm
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 tool/rootless_stability_harness.py server \
+            --root /tmp/rootless-stability --nodes 8 \
+            >/tmp/rootless-harness.log 2>&1 &
+          HARNESS_PID=$!
+
+          ./mihomo-rootless \
+            -d /tmp/rootless-stability \
+            -f /tmp/rootless-stability/config.yaml \
+            >/tmp/rootless-core.log 2>&1 &
+          CORE_PID=$!
+
+          cleanup() {
+            kill "$CORE_PID" "$HARNESS_PID" "${MON_PID:-}" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          READY=0
+          for _ in $(seq 1 120); do
+            if python3 tool/rootless_stability_harness.py load \
+              --count 20 --concurrency 4 --timeout 3 \
+              --output /tmp/ready.json >/dev/null 2>&1; then
+              FAILURES=$(python3 -c 'import json; print(json.load(open("/tmp/ready.json"))["failures"])')
+              if [ "$FAILURES" -eq 0 ]; then
+                READY=1
+                break
+              fi
+            fi
+            kill -0 "$CORE_PID"
+            sleep 0.25
+          done
+          test "$READY" -eq 1
+
+          python3 tool/rootless_stability_harness.py load \
+            --count 1000 --concurrency 64 --timeout 5 \
+            --output results/warmup.json | tee results/warmup.txt
+          kill -0 "$CORE_PID"
+
+          RSS_BASE=$(awk '/VmRSS:/{print $2}' /proc/$CORE_PID/status)
+          FD_BASE=$(find /proc/$CORE_PID/fd -maxdepth 1 -type l | wc -l)
+          THR_BASE=$(awk '/Threads:/{print $2}' /proc/$CORE_PID/status)
+          printf '%s %s %s\n' "$RSS_BASE" "$FD_BASE" "$THR_BASE" >BASELINE.txt
+
+          (
+            while kill -0 "$CORE_PID" 2>/dev/null; do
+              RSS=$(awk '/VmRSS:/{print $2}' /proc/$CORE_PID/status 2>/dev/null || echo 0)
+              FDS=$(find /proc/$CORE_PID/fd -maxdepth 1 -type l 2>/dev/null | wc -l)
+              THR=$(awk '/Threads:/{print $2}' /proc/$CORE_PID/status 2>/dev/null || echo 0)
+              CPU=$(ps -p "$CORE_PID" -o %cpu= 2>/dev/null | xargs || echo 0)
+              printf '%s %s %s %s %s\n' "$(date +%s%3N)" "$RSS" "$FDS" "$THR" "$CPU"
+              sleep 0.2
+            done
+          ) >RESOURCE_SAMPLES.txt &
+          MON_PID=$!
+
+          : >PHASE_SUMMARY.jsonl
+          for PHASE in $(seq 0 19); do
+            echo "$PHASE" >/tmp/rootless-stability/phase
+            sleep 1.25
+            kill -0 "$CORE_PID"
+
+            python3 tool/rootless_stability_harness.py load \
+              --count 250 --concurrency 32 --timeout 5 \
+              --output "results/phase-$PHASE-probe.json" \
+              | tee "results/phase-$PHASE-probe.txt"
+
+            python3 tool/rootless_stability_harness.py load \
+              --count 4750 --concurrency 192 --timeout 5 \
+              --output "results/phase-$PHASE-bulk.json" \
+              | tee "results/phase-$PHASE-bulk.txt"
+
+            python3 - "$PHASE" <<'PY' >>PHASE_SUMMARY.jsonl
+          import json, sys
+          phase = int(sys.argv[1])
+          probe = json.load(open(f"results/phase-{phase}-probe.json"))
+          bulk = json.load(open(f"results/phase-{phase}-bulk.json"))
+          print(json.dumps({
+              "phase": phase,
+              "probe_failures": probe["failures"],
+              "probe_elapsed_ms": probe["elapsed_ms"],
+              "bulk_failures": bulk["failures"],
+              "bulk_elapsed_ms": bulk["elapsed_ms"],
+              "phase_failures": probe["failures"] + bulk["failures"],
+              "phase_requests": probe["count"] + bulk["count"],
+          }, sort_keys=True))
+          PY
+
+            kill -0 "$CORE_PID"
+          done
+
+          sleep 2
+          kill "$MON_PID" 2>/dev/null || true
+          wait "$MON_PID" 2>/dev/null || true
+
+          RSS_FINAL=$(awk '/VmRSS:/{print $2}' /proc/$CORE_PID/status)
+          FD_FINAL=$(find /proc/$CORE_PID/fd -maxdepth 1 -type l | wc -l)
+          THR_FINAL=$(awk '/Threads:/{print $2}' /proc/$CORE_PID/status)
+          printf '%s %s %s\n' "$RSS_FINAL" "$FD_FINAL" "$THR_FINAL" >FINAL_RESOURCE.txt
+
+          curl -fsS http://127.0.0.1:18081/metrics | tee NODE_COUNTERS.json
+          curl -fsS http://127.0.0.1:19090/proxies/SMART-ROOTLESS \
+            | tee SMART_GROUP_FINAL.json || true
+
+          kill -0 "$CORE_PID"
+
+      - name: Enforce rootless stability gates
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json
+          from pathlib import Path
+
+          phases = [json.loads(line) for line in Path("PHASE_SUMMARY.jsonl").read_text().splitlines() if line.strip()]
+          if len(phases) != 20:
+              raise SystemExit(f"expected 20 node rotations, got {len(phases)}")
+
+          total_requests = sum(p["phase_requests"] for p in phases)
+          total_failures = sum(p["phase_failures"] for p in phases)
+          max_phase_failures = max(p["phase_failures"] for p in phases)
+          max_probe_failures = max(p["probe_failures"] for p in phases)
+          max_probe_ms = max(p["probe_elapsed_ms"] for p in phases)
+
+          if total_requests != 100000:
+              raise SystemExit(f"expected 100000 requests, got {total_requests}")
+          if total_failures > 500:
+              raise SystemExit(f"continuity failure gate exceeded: {total_failures}/100000 > 0.5%")
+          if max_phase_failures > 50:
+              raise SystemExit(f"single rotation failure gate exceeded: {max_phase_failures}/5000 > 1%")
+          if max_probe_failures > 5:
+              raise SystemExit(f"post-switch recovery probe exceeded: {max_probe_failures}/250 > 2%")
+          if max_probe_ms > 8000:
+              raise SystemExit(f"post-switch recovery probe too slow: {max_probe_ms:.1f} ms")
+
+          base_rss, base_fd, base_thr = map(int, Path("BASELINE.txt").read_text().split())
+          final_rss, final_fd, final_thr = map(int, Path("FINAL_RESOURCE.txt").read_text().split())
+
+          samples = []
+          for line in Path("RESOURCE_SAMPLES.txt").read_text().splitlines():
+              if not line.strip():
+                  continue
+              _, rss, fds, thr, cpu = line.split()
+              samples.append((int(rss), int(fds), int(thr), float(cpu)))
+
+          max_rss = max(v[0] for v in samples)
+          max_fd = max(v[1] for v in samples)
+          max_thr = max(v[2] for v in samples)
+
+          if max_rss > 245760:
+              raise SystemExit(f"RSS ceiling exceeded: {max_rss} KiB > 240 MiB")
+          if final_rss - base_rss > 49152:
+              raise SystemExit(f"RSS did not recover: +{final_rss - base_rss} KiB > 48 MiB")
+          if max_fd > 1024:
+              raise SystemExit(f"FD ceiling exceeded: {max_fd} > 1024")
+          if final_fd - base_fd > 32:
+              raise SystemExit(f"FD leak suspected: baseline={base_fd}, final={final_fd}")
+          if max_thr > 256:
+              raise SystemExit(f"thread ceiling exceeded: {max_thr} > 256")
+          if final_thr - base_thr > 16:
+              raise SystemExit(f"thread leak suspected: baseline={base_thr}, final={final_thr}")
+
+          node_metrics = json.loads(Path("NODE_COUNTERS.json").read_text())
+          counters = node_metrics.get("counters", [])
+          if len(counters) != 8 or any(value <= 0 for value in counters):
+              raise SystemExit(f"not all eight nodes participated: {counters}")
+
+          summary = {
+              "requests": total_requests,
+              "node_rotations": len(phases),
+              "failures": total_failures,
+              "failure_rate": total_failures / total_requests,
+              "max_phase_failures": max_phase_failures,
+              "max_probe_failures": max_probe_failures,
+              "max_probe_ms": max_probe_ms,
+              "baseline_rss_kib": base_rss,
+              "final_rss_kib": final_rss,
+              "max_rss_kib": max_rss,
+              "baseline_fd": base_fd,
+              "final_fd": final_fd,
+              "max_fd": max_fd,
+              "max_threads": max_thr,
+              "node_counters": counters,
+          }
+          Path("ROOTLESS_STABILITY_SUMMARY.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+          if grep -Eai 'panic:|fatal error:|deadlock|concurrent map (read|write)' /tmp/rootless-core.log; then
+            echo "fatal runtime signature detected"
+            exit 1
+          fi
+
+      - name: Upload rootless stability evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rootless-portable-stability
+          path: |
+            ROOTLESS_RACE.txt
+            ROOTLESS_STABILITY_SUMMARY.json
+            PHASE_SUMMARY.jsonl
+            BASELINE.txt
+            FINAL_RESOURCE.txt
+            RESOURCE_SAMPLES.txt
+            NODE_COUNTERS.json
+            SMART_GROUP_FINAL.json
+            results/
+            /tmp/rootless-core.log
+            /tmp/rootless-harness.log
+
+  android-rootless-linkage:
+    name: Android arm64 VpnService core linkage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout Bettbox
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: core/go.sum
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+          cache: true
+
+      - name: Setup Android NDK
+        shell: bash
+        run: |
+          NDK_VERSION="28.2.13676358"
+          yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${NDK_VERSION}" >/dev/null 2>&1 || true
+          echo "ANDROID_NDK=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Resolve Dart dependencies
+        run: flutter pub get
+
+      - name: Build locked Smart libmeta
+        run: |
+          set -euo pipefail
+          dart run tool/smart_core.dart
+          dart setup.dart android --arch arm64 --out core-only
+          test -s libclash/android/arm64-v8a/libmeta.so
+          test -s libclash/android/arm64-v8a/libmeta.h
+
+      - name: Verify Android ABI contract
+        run: |
+          set -euo pipefail
+          nm -D --defined-only libclash/android/arm64-v8a/libmeta.so >ANDROID_SYMBOLS.txt
+          for symbol in initNativeApiBridge invokeAction startTUN stopTun getAndroidVpnOptions updateDns; do
+            grep -Eq "[[:space:]]$symbol$" ANDROID_SYMBOLS.txt
+          done
+
+      - name: Link JNI wrapper against Smart core
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew :core:assembleRelease --stacktrace
+
+      - name: Upload Android linkage evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rootless-android-linkage
+          path: |
+            ANDROID_SYMBOLS.txt
+            libclash/android/arm64-v8a/libmeta.so
+            libclash/android/arm64-v8a/libmeta.h
+            android/core/build/outputs/aar/*.aar
