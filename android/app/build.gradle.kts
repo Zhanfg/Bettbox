@@ -34,6 +34,7 @@ android {
         applicationId = "com.appshub.bettbox"
         minSdk = 26
         targetSdk = 36
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -86,6 +87,10 @@ dependencies {
         exclude(group = "com.google.guava", module = "guava")
     }
     implementation("androidx.core:core-splashscreen:1.0.1")
+
+    androidTestImplementation("androidx.test:core-ktx:1.7.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit-ktx:1.3.0")
 }
 
 configurations.all {
