@@ -7,6 +7,8 @@ import 'package:args/command_runner.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart';
 
+import 'tool/smart_core.dart';
+
 enum Target { windows, linux, android, macos }
 
 extension TargetExt on Target {
@@ -183,6 +185,14 @@ class Build {
     bool compatible = false,
   }) async {
     final isLib = mode == Mode.lib;
+    final useSmartCore = !compatible;
+
+    if (useSmartCore) {
+      await SmartCoreSync.prepare();
+    }
+
+    final modFileArgs =
+        useSmartCore ? const ['-modfile=smart.mod'] : const <String>[];
 
     final items = buildItems.where((element) {
       return element.target == target &&
@@ -227,7 +237,7 @@ class Build {
       final buildTags = getTags(item);
 
       await exec(
-        ['go', 'mod', 'tidy'],
+        ['go', 'mod', 'tidy', ...modFileArgs],
         name: 'go mod tidy',
         environment: env,
         workingDirectory: _coreDir,
@@ -236,6 +246,7 @@ class Build {
       final execLines = [
         'go',
         'build',
+        ...modFileArgs,
         '-trimpath',
         '-ldflags=-w -s${item.target == Target.android && (item.arch == Arch.arm64 || item.arch == Arch.amd64) ? ' -extldflags "-Wl,-z,max-page-size=16384"' : ''}',
         '-tags=$buildTags',
