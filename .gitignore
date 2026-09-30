@@ -68,6 +68,11 @@ app.*.map.json
 #libclash
 /libclash/
 
+# Smart Core generated source/module state
+/.smart-core/
+/core/smart.mod
+/core/smart.sum
+
 #jniLibs
 /android/app/src/main/jniLibs/
 /android/core/src/main/jniLibs/
