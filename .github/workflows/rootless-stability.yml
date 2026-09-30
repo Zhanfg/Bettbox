@@ -12,6 +12,7 @@ on:
       - tool/rootless_stability_harness.py
       - core/**
       - android/core/**
+      - android/app/**
       - .github/workflows/rootless-stability.yml
 
 permissions:
@@ -402,3 +403,89 @@ jobs:
             libclash/android/arm64-v8a/libmeta.so
             libclash/android/arm64-v8a/libmeta.h
             android/core/build/outputs/aar/*.aar
+
+
+  android-vpnservice-stress:
+    name: Android API ${{ matrix.api-level }} VpnService lifecycle storm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [26, 30, 35]
+
+    steps:
+      - name: Checkout Bettbox
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.0'
+          cache: true
+          cache-dependency-path: core/go.sum
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+          cache: true
+
+      - name: Setup Android NDK
+        shell: bash
+        run: |
+          NDK_VERSION="28.2.13676358"
+          yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${NDK_VERSION}" >/dev/null 2>&1 || true
+          echo "ANDROID_NDK=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Resolve Dart dependencies
+        run: flutter pub get
+
+      - name: Build x86_64 Smart libmeta for emulator
+        run: |
+          set -euo pipefail
+          dart run tool/smart_core.dart
+          dart setup.dart android --arch amd64 --out core-only
+          test -s libclash/android/x86_64/libmeta.so
+          test -s libclash/android/x86_64/libmeta.h
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run real BettboxVpnService stress suite
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: default
+          arch: x86_64
+          working-directory: android
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: >
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace
+            -Pandroid.testInstrumentationRunnerArguments.class=com.appshub.bettbox.RootlessVpnServiceStressTest
+
+      - name: Upload Android VpnService stress evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rootless-vpnservice-api-${{ matrix.api-level }}
+          path: |
+            android/app/build/reports/androidTests/connected/
+            android/app/build/outputs/androidTest-results/connected/
+            android/app/build/outputs/apk/debug/
+            android/app/build/outputs/apk/androidTest/debug/
