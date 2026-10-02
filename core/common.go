@@ -278,7 +278,7 @@ func updateConfig(params *UpdateParams) {
 		general.Tun.Stack = *params.Tun.Stack
 		general.Tun.DisableICMPForwarding = *params.Tun.DisableICMPForwarding
 		if params.Tun.CongestionController != nil {
-			general.Tun.CongestionController = *params.Tun.CongestionController
+			setTunCongestionController(&general.Tun, *params.Tun.CongestionController)
 		}
 	}
 

@@ -135,13 +135,19 @@ class Build {
     return 'gcc';
   }
 
-  static String getTags(BuildItem buildItem) {
-    final baseTags = 'with_gvisor';
+  static String getTags(
+    BuildItem buildItem, {
+    required bool smartPortable,
+  }) {
+    final tags = <String>['with_gvisor'];
+    if (smartPortable) {
+      tags.add('bettbox_smart_portable');
+    }
     if (buildItem.target == Target.android &&
         buildItem.archName == 'armeabi-v7a') {
-      return '$baseTags,with_low_memory';
+      tags.add('with_low_memory');
     }
-    return baseTags;
+    return tags.join(',');
   }
 
   static Future<void> exec(
@@ -234,7 +240,7 @@ class Build {
         env['CGO_ENABLED'] = '0';
       }
 
-      final buildTags = getTags(item);
+      final buildTags = getTags(item, smartPortable: useSmartCore);
 
       await exec(
         ['go', 'mod', 'tidy', ...modFileArgs],
