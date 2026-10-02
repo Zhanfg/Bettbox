@@ -306,6 +306,11 @@ jobs:
           print(json.dumps(summary, indent=2, sort_keys=True))
           PY
 
+          if grep -Eai 'filedescriptor out of range|can.t start new thread|too many open files' /tmp/rootless-harness.log; then
+            echo "stress harness saturated; result is invalid"
+            exit 1
+          fi
+
           if grep -Eai 'panic:|fatal error:|deadlock|concurrent map (read|write)' /tmp/rootless-core.log; then
             echo "fatal runtime signature detected"
             exit 1
