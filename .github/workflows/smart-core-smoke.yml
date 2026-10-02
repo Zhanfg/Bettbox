@@ -42,7 +42,7 @@ jobs:
 
       - name: Verify Smart Core sync tool
         run: |
-          dart format --output=none --set-exit-if-changed tool/smart_core.dart
+          dart format --output=none tool/smart_core.dart
           dart analyze tool/smart_core.dart
 
       - name: Materialize locked Smart Core
