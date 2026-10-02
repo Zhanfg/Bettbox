@@ -16,7 +16,6 @@ import (
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
-	"github.com/metacubex/mihomo/constant/features"
 	cp "github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/hub"
 	"github.com/metacubex/mihomo/hub/route"
@@ -70,7 +69,7 @@ func toExternalProvider(p cp.Provider) (*ExternalProvider, error) {
 			Count:            psp.Count(),
 			UpdateAt:         psp.UpdatedAt(),
 			Path:             psp.Vehicle().Path(),
-			SubscriptionInfo: psp.GetSubscriptionInfo(),
+			SubscriptionInfo: getSubscriptionInfoCompat(psp),
 			Proxies:          psp.Proxies(),
 		}, nil
 	case *provider.InlineProvider:
@@ -146,13 +145,13 @@ func updateListeners() {
 	listener.ReCreateShadowSocks(general.ShadowSocksConfig, tunnel.Tunnel)
 	listener.ReCreateVmess(general.VmessConfig, tunnel.Tunnel)
 	listener.ReCreateTuic(general.TuicServer, tunnel.Tunnel)
-	if !features.Android {
+	if runtime.GOOS != "android" {
 		listener.ReCreateTun(general.Tun, tunnel.Tunnel)
 	}
 }
 
 func stopListeners() {
-	listener.StopListener()
+	stopListenersCompat()
 }
 
 func patchSelectGroup(mapping map[string]string) {
@@ -386,7 +385,7 @@ func setupConfig(params *SetupParams) error {
 	runLock.Lock()
 	defer runLock.Unlock()
 
-	constant.DefaultTestURL = params.TestURL
+	setDefaultTestURLCompat(params.TestURL)
 
 	buf, err := readFile(filepath.Join(constant.Path.HomeDir(), constant.Path.Config()))
 	if err != nil {

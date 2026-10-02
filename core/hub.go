@@ -24,12 +24,10 @@ import (
 	"github.com/metacubex/mihomo/component/age"
 	"github.com/metacubex/mihomo/component/mmdb"
 	"github.com/metacubex/mihomo/component/resolver"
-	"github.com/metacubex/mihomo/component/updater"
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
 	cp "github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/hub/executor"
-	"github.com/metacubex/mihomo/listener"
 	"github.com/metacubex/mihomo/log"
 	mihomoNtp "github.com/metacubex/mihomo/ntp/ntp"
 	rulesProvider "github.com/metacubex/mihomo/rules/provider"
@@ -80,7 +78,7 @@ func handleStopListener() bool {
 	runLock.Lock()
 	defer runLock.Unlock()
 	isRunning = false
-	listener.StopListener()
+	stopListenersCompat()
 	return true
 }
 
@@ -203,7 +201,7 @@ func handleChangeProxy(data string, fn func(string string)) {
 }
 
 func handleGetTraffic() string {
-	up, down := statistic.DefaultManager.NowTraffic(state.CurrentState.OnlyStatisticsProxy)
+	up, down := trafficNowCompat(state.CurrentState.OnlyStatisticsProxy)
 	traffic := map[string]int64{
 		"up":   up,
 		"down": down,
@@ -217,7 +215,7 @@ func handleGetTraffic() string {
 }
 
 func handleGetTotalTraffic() string {
-	up, down := statistic.DefaultManager.TotalTraffic(state.CurrentState.OnlyStatisticsProxy)
+	up, down := trafficTotalCompat(state.CurrentState.OnlyStatisticsProxy)
 	traffic := map[string]int64{
 		"up":   up,
 		"down": down,
@@ -392,19 +390,19 @@ func handleUpdateGeoData(geoType string, geoName string, fn func(value string)) 
 		path := constant.Path.Resolve(geoName)
 		switch geoType {
 		case "MMDB":
-			err := updater.UpdateMMDBWithPath(path)
+			err := updateMMDBWithPathCompat(path)
 			if err != nil {
 				fn(err.Error())
 				return
 			}
 		case "ASN":
-			err := updater.UpdateASNWithPath(path)
+			err := updateASNWithPathCompat(path)
 			if err != nil {
 				fn(err.Error())
 				return
 			}
 		case "GeoSite":
-			err := updater.UpdateGeoSiteWithPath(path)
+			err := updateGeoSiteWithPathCompat(path)
 			if err != nil {
 				fn(err.Error())
 				return
@@ -856,7 +854,7 @@ func handleSuspend(mode int) bool {
 }
 
 func init() {
-	adapter.UrlTestHook = func(url string, name string, delay uint16) {
+	setURLTestHookCompat(func(url string, name string, delay uint16) {
 		delayData := &Delay{
 			Url:  url,
 			Name: name,
@@ -870,8 +868,8 @@ func init() {
 			Type: DelayMessage,
 			Data: delayData,
 		})
-	}
-	statistic.DefaultRequestNotify = func(c statistic.Tracker) {
+	})
+	setRequestNotifyCompat(func(c statistic.Tracker) {
 		info := c.Info()
 		recordRequestHistory(info)
 		if !isStreamingRequests.Load() {
@@ -881,13 +879,13 @@ func init() {
 			Type: RequestMessage,
 			Data: info,
 		})
-	}
-	executor.DefaultProviderLoadedHook = func(providerName string) {
+	})
+	setProviderLoadedHookCompat(func(providerName string) {
 		sendMessage(Message{
 			Type: LoadedMessage,
 			Data: providerName,
 		})
-	}
+	})
 }
 
 const maxRequestHistory = 256

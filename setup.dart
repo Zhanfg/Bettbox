@@ -142,6 +142,9 @@ class Build {
     final tags = <String>['with_gvisor'];
     if (smartPortable) {
       tags.add('bettbox_smart_portable');
+      if (buildItem.target == Target.android) {
+        tags.add('cmfa');
+      }
     }
     if (buildItem.target == Target.android &&
         buildItem.archName == 'armeabi-v7a') {
