@@ -24,7 +24,7 @@ type Props struct {
 	Dns6     string `json:"dns6"`
 }
 
-func Start(fd int, device string, stack constant.TUNStack, disableIcmpForwarding bool, mtu uint32, ipv6Enabled bool, congestionController string) (*sing_tun.Listener, error) {
+func Start(fd int, device string, stack constant.TUNStack, disableIcmpForwarding bool, mtu uint32, ipv6Enabled bool) (*sing_tun.Listener, error) {
 	var prefix4 []netip.Prefix
 	tempPrefix4, err := netip.ParsePrefix(state.DefaultIpv4Address)
 	if err != nil {
@@ -64,9 +64,6 @@ func Start(fd int, device string, stack constant.TUNStack, disableIcmpForwarding
 		DisableICMPForwarding: disableIcmpForwarding,
 	}
 
-	if congestionController != "" {
-		log.Debugln("[TUN] Smart portable core ignores Bettbox-only congestion-controller=%s", congestionController)
-	}
 
 	listener, err := sing_tun.New(options, tunnel.Tunnel)
 
