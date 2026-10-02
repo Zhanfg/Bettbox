@@ -62,7 +62,10 @@ func Start(fd int, device string, stack constant.TUNStack, disableIcmpForwarding
 		MTU:                   validMtu,
 		FileDescriptor:        fd,
 		DisableICMPForwarding: disableIcmpForwarding,
-		CongestionController:  congestionController,
+	}
+
+	if congestionController != "" {
+		log.Debugln("[TUN] Smart portable core ignores Bettbox-only congestion-controller=%s", congestionController)
 	}
 
 	listener, err := sing_tun.New(options, tunnel.Tunnel)
