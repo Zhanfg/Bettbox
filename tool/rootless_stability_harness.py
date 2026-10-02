@@ -4,7 +4,7 @@ import asyncio
 import http.server
 import json
 import os
-import select
+import selectors
 import socket
 import socketserver
 import statistics
@@ -76,7 +76,10 @@ class TargetHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(BODY)))
         self.send_header("Connection", "close")
         self.end_headers()
-        self.wfile.write(BODY)
+        try:
+            self.wfile.write(BODY)
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
     def log_message(self, *_):
         pass
@@ -149,22 +152,35 @@ class ProxyHandler(socketserver.BaseRequestHandler):
             client.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
             client.setblocking(False)
             upstream.setblocking(False)
-            sockets = [client, upstream]
+
+            selector = selectors.DefaultSelector()
+            selector.register(client, selectors.EVENT_READ, upstream)
+            selector.register(upstream, selectors.EVENT_READ, client)
             try:
                 while True:
-                    readable, _, exceptional = select.select(sockets, [], sockets, 5)
-                    if exceptional or not readable:
+                    events = selector.select(timeout=5)
+                    if not events:
                         break
-                    for src in readable:
-                        dst = upstream if src is client else client
+                    for key, _ in events:
+                        src = key.fileobj
+                        dst = key.data
                         try:
                             buf = src.recv(65536)
                         except BlockingIOError:
                             continue
                         if not buf:
                             return
-                        dst.sendall(buf)
+                        view = memoryview(buf)
+                        while view:
+                            try:
+                                sent = dst.send(view)
+                            except BlockingIOError:
+                                continue
+                            if sent <= 0:
+                                return
+                            view = view[sent:]
             finally:
+                selector.close()
                 upstream.close()
         finally:
             state.end()
