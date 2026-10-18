@@ -39,7 +39,7 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
     'require-ipv4': '只允许 IPv4',
     'require-ipv6': '只允许 IPv6',
     'uselightgbm': '使用 Smart 模型评分',
-    'collectdata': '收集训练样本',
+    'collectdata': '保存离线训练样本（增加磁盘写入）',
   };
 
   @override
