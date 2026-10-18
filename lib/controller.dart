@@ -2119,6 +2119,31 @@ class AppController {
 
     await restoreBackupFiles(profiles, homeDirPath);
 
+    if (system.isWindows &&
+        recoveryOption == RecoveryOption.all &&
+        learningSnapshots.isNotEmpty) {
+      final snapshotBytes = learningSnapshots.single.content;
+      if (snapshotBytes.isEmpty || snapshotBytes.length > 512 * 1024 * 1024) {
+        throw StateError('Invalid Smart learning snapshot size');
+      }
+      // The core imports this on its next initialization (before any Smart
+      // group is created), so there is no live bbolt/cache clobbering.
+      final pending = File(join(homeDirPath, '.bettbox-smart-learning-pending.db'));
+      final staged = File('${pending.path}.tmp');
+      try {
+        await staged.writeAsBytes(snapshotBytes, flush: true);
+        if (await pending.exists()) {
+          await pending.delete();
+        }
+        await staged.rename(pending.path);
+      } finally {
+        if (await staged.exists()) await staged.delete();
+      }
+      globalState.showNotifier(
+        'Smart learning data staged; restart Bettbox to activate restored history.',
+      );
+    }
+
     _recovery(tempConfig, recoveryOption);
     await savePreferences();
     if (globalState.isStart) {
