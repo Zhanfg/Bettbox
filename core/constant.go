@@ -99,6 +99,7 @@ const (
 	decryptAgeConfigMethod         Method = "decryptAgeConfig"
 	updateConfigMethod             Method = "updateConfig"
 	getProxiesMethod               Method = "getProxies"
+	getSmartRankingsMethod         Method = "getSmartRankings"
 	changeProxyMethod              Method = "changeProxy"
 	getTrafficMethod               Method = "getTraffic"
 	getTotalTrafficMethod          Method = "getTotalTraffic"
