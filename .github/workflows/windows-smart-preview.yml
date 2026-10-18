@@ -15,6 +15,7 @@ on:
       - 'lib/**'
       - 'plugins/**'
       - 'pubspec.*'
+      - 'test/**'
   workflow_dispatch:
 
 permissions:
@@ -64,6 +65,12 @@ jobs:
           flutter pub get
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dart run build_runner build --delete-conflicting-outputs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run Smart frontend contract tests
+        shell: pwsh
+        run: |
+          flutter test test/smart_group_contract_test.dart
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify pinned Smart V11 source
