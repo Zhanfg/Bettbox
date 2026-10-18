@@ -36,6 +36,8 @@ mixin ClashInterface {
 
   FutureOr<Map> getProxies();
 
+  FutureOr<String> getSmartRankings(String groupName);
+
   FutureOr<String> changeProxy(ChangeProxyParams changeProxyParams);
 
   Future<bool> startListener();
