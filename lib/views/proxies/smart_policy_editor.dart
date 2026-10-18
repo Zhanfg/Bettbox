@@ -26,6 +26,7 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
   bool _saving = false;
   String? _error;
   final Set<String> _changedFlags = <String>{};
+  late Map<String, bool> _initialFlags;
   late String _initialCountry;
   late String _initialSampleRate;
   late String _initialPolicyPriority;
@@ -70,9 +71,21 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
       for (final key in _labels.keys)
         key: (saved[key] as bool?) ?? base[key] ?? false,
     };
+    _initialFlags = Map<String, bool>.from(_flags);
     _initialCountry = _country.text;
     _initialSampleRate = _sampleRate.text;
     _initialPolicyPriority = _policyPriority.text;
+  }
+
+  void _setFlag(String key, bool value) {
+    setState(() {
+      _flags[key] = value;
+      if (value == _initialFlags[key]) {
+        _changedFlags.remove(key);
+      } else {
+        _changedFlags.add(key);
+      }
+    });
   }
 
   @override
@@ -222,10 +235,7 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
                 value: _flags['auto-ip-family'] ?? false,
                 onChanged: _saving
                     ? null
-                    : (value) => setState(() {
-                        _flags['auto-ip-family'] = value;
-                        _changedFlags.add('auto-ip-family');
-                      }),
+                    : (value) => _setFlag('auto-ip-family', value),
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -234,10 +244,7 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
                 value: _flags['uselightgbm'] ?? false,
                 onChanged: _saving
                     ? null
-                    : (value) => setState(() {
-                        _flags['uselightgbm'] = value;
-                        _changedFlags.add('uselightgbm');
-                      }),
+                    : (value) => _setFlag('uselightgbm', value),
               ),
               ExpansionTile(
                 tilePadding: EdgeInsets.zero,
@@ -276,10 +283,7 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
                           value: _flags[item.key] ?? false,
                           onChanged: _saving
                               ? null
-                              : (value) => setState(() {
-                                  _flags[item.key] = value;
-                                  _changedFlags.add(item.key);
-                                }),
+                              : (value) => _setFlag(item.key, value),
                         ),
                       ),
                 ],
