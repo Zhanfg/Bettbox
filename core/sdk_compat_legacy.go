@@ -55,3 +55,9 @@ func setRequestNotifyCompat(fn func(statistic.Tracker)) {
 func setProviderLoadedHookCompat(fn func(string)) {
 	executor.DefaultProviderLoadedHook = fn
 }
+
+
+// Legacy Mihomo already emits these notifications from its own hooks.
+// Keep the explicit-operation bridge Smart-only to avoid duplicate events.
+func notifyDelayResultCompat(_ *Delay) {}
+func notifyProviderUpdatedCompat(_ string) {}
