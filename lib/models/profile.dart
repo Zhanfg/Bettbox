@@ -88,6 +88,8 @@ abstract class Profile with _$Profile {
     // Non-destructive Smart policy overrides survive subscription refreshes.
     @JsonKey(name: 'smart-policies')
     @Default({}) Map<String, Map<String, dynamic>> smartPolicies,
+    @JsonKey(name: 'smart-group-overrides')
+    @Default({}) Set<String> smartGroupOverrides,
   }) = _Profile;
 
   factory Profile.fromJson(Map<String, Object?> json) =>
