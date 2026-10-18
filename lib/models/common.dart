@@ -291,6 +291,23 @@ abstract class Group with _$Group {
     String? now,
     bool? hidden,
     String? testUrl,
+    // Smart V11 exposes the active policy and last observed path via core JSON.
+    // Keep these nullable: normal proxy groups and older cores omit them.
+    String? fixed,
+    String? country,
+    bool? countryAffinity,
+    bool? autoIPFamily,
+    bool? preferASN,
+    bool? preferIPv4,
+    bool? preferIPv6,
+    bool? requireIPv4,
+    bool? requireIPv6,
+    bool? collectData,
+    bool? useLightGBM,
+    num? sampleRate,
+    int? tolerance,
+    Map<String, dynamic>? pathProfile,
+    Map<String, dynamic>? endToEnd,
     @Default('') String icon,
     required String name,
   }) = _Group;
