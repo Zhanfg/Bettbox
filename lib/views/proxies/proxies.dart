@@ -15,6 +15,7 @@ import '../profiles/scripts.dart'
     show showGroupSwitchOptions, showScriptCustomOptions;
 import 'advanced_settings.dart';
 import 'setting.dart';
+import 'smart_insights.dart';
 import 'tab.dart';
 
 class ProxiesView extends ConsumerStatefulWidget {
@@ -47,7 +48,27 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
     final hasGroupCustom =
         !hasScriptCustom && ref.read(currentProfileIdProvider) != null;
     final hasCustom = hasScriptCustom || hasGroupCustom;
+    final hasSmartGroups = ref.watch(
+      groupsProvider.select(
+        (groups) => groups.any((group) => group.type == GroupType.Smart),
+      ),
+    );
     return [
+      if (hasSmartGroups)
+        IconButton(
+          tooltip: 'Smart V11 diagnostics',
+          icon: const Icon(Icons.auto_awesome_outlined),
+          onPressed: () {
+            showExtend(
+              context,
+              builder: (_, type) => AdaptiveSheetScaffold(
+                type: type,
+                title: 'Smart V11',
+                body: const SmartInsightsView(),
+              ),
+            );
+          },
+        ),
       if (_isTab)
         IconButton(
           onPressed: () {
