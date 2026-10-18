@@ -34,3 +34,19 @@ Lite Model **不是** 用来取代 Bettbox 原有 GeoSite/MMDB/ASN/MRS 资源，
 2. Windows Runner：下载校验、Flutter 测试、Go 核心、Rust Helper、Flutter Release、ZIP 打包、在发布目录核对回退模型 SHA。
 3. 真实 Windows：断网首启、旧版数据目录升级、自定义 Model.bin 不被覆写、模型更新失败仍能推理、活动模型损坏时回退、恢复 Lite 的事务回滚、卸载/便携模式路径。
 4. 第一个可对外下载的 Windows 包必须内置 Lite，且以上测试合格才能标记为可用版。
+
+## 预设与后续模型升级（2026-10-18 修订）
+
+首发捆绑的 Lite 仅为**默认回退资源**，不是模型系统的上限。资源页名称为 `Smart · Models`，在原有资源选项卡内提供：
+- **Lite 9.3 MB**：离线预制，首次安装无需网络，一键恢复
+- **Middle 18.4 MB**：按需下载，SHA-256 校验，缓存到 `smart-models`
+- **Large 26.8 MB**：按需下载，SHA-256 校验，缓存到 `smart-models`
+- **Import compatible model**：本地文件导入，内核检验为兼容 30 特征的 LightGBM 模型后才允许切换
+
+已下载的 Middle/Large 可以在本地缓存中切换，不覆盖随包 Lite；激活失败回滚至此前 `Model.bin`。模型格式**不是**任意 `GGUF`/LLM 权重：当前 Smart V11 推理器支持 30 特征 LightGBM 树集成，未来若引入神经网络/更高维模型，需要新推理后端与能力协商，不能冒充兼容。
+
+预设源与锁定 SHA-256：
+- Middle: `Model-middle.bin`，18,357,364 字节，`6a17dffbb29862135c9e3706eabf60488862f578ef9edf60a5d325529873cfaa`
+- Large: `Model-large.bin`，26,787,747 字节，`832920df1290454710dd04aa4c7d4b5324edfd7816a7c9ad2272708b5d5a13a8`
+
+离线默认不进行大模型下载，不增加首发包体和安装时功耗。预设变更不会影响 Bettbox 原有资源项与订阅管理。
