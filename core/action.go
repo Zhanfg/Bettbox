@@ -99,6 +99,14 @@ func handleAction(action *Action, result ActionResult) {
 	case getProxiesMethod:
 		result.success(handleGetProxies())
 		return
+	case getSmartRankingsMethod:
+		name, ok := action.Data.(string)
+		if !ok {
+			result.error("invalid Smart group name")
+			return
+		}
+		result.success(handleGetSmartRankings(name))
+		return
 	case changeProxyMethod:
 		data := action.Data.(string)
 		handleChangeProxy(data, func(value string) {
