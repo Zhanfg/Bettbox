@@ -87,6 +87,18 @@ jobs:
           dart run tool/smart_core.dart --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Verify Lite model inference against exact Smart source
+        shell: pwsh
+        run: |
+          $env:MIHOMO_SMART_MODEL = (Resolve-Path 'assets/data/Model-Lite.bin').Path
+          Push-Location '.smart-core/mihomo'
+          try {
+            go test -count=1 ./component/smart/lightgbm -run 'TestCurrentModelSmoke|TestCurrentModelPreparedFeatureParity'
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+
       - name: Build Smart V11 core and Windows helper
         shell: pwsh
         run: |
