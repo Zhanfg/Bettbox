@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:bett_box/enum/enum.dart';
 import 'package:bett_box/models/common.dart';
 import 'package:bett_box/providers/providers.dart';
@@ -11,6 +13,49 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// immutable group policy requires editing the profile and reloading it.
 class SmartInsightsView extends ConsumerWidget {
   const SmartInsightsView({super.key});
+
+  Future<void> _enableSmart(
+    BuildContext context,
+    WidgetRef ref,
+    Group group,
+  ) async {
+    final profile = ref.read(currentProfileProvider);
+    if (profile == null || group.name == 'GLOBAL') return;
+    final nextTypes = Set<String>.from(profile.smartGroupOverrides)
+      ..add(group.name);
+    final selected = Map<String, String>.from(profile.selectedMap)
+      ..remove(group.name);
+    ref.read(profilesProvider.notifier).updateProfile(
+      profile.id,
+      (value) => value.copyWith(
+        smartGroupOverrides: nextTypes,
+        selectedMap: selected,
+      ),
+    );
+    try {
+      final raw = await globalState.patchRawConfig(
+        patchConfig: ref.read(patchClashConfigProvider),
+      );
+      final validation = await clashCore.validateConfig(json.encode(raw));
+      if (validation.isNotEmpty) {
+        throw StateError(validation);
+      }
+      await globalState.appController.applyProfile(silence: true);
+    } catch (e) {
+      ref.read(profilesProvider.notifier).updateProfile(
+        profile.id,
+        (value) => value.copyWith(
+          smartGroupOverrides: profile.smartGroupOverrides,
+          selectedMap: profile.selectedMap,
+        ),
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text('Smart conversion failed: $e')),
+        );
+      }
+    }
+  }
 
   static String _display(dynamic value, {String missing = '—'}) {
     if (value == null) return missing;
@@ -158,8 +203,14 @@ class SmartInsightsView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final smartGroups = ref.watch(groupsProvider)
+    final allGroups = ref.watch(groupsProvider);
+    final smartGroups = allGroups
         .where((group) => group.type == GroupType.Smart)
+        .toList();
+    final candidates = allGroups
+        .where((group) =>
+            group.name != 'GLOBAL' &&
+            group.type != GroupType.Smart)
         .toList();
 
     return ListView(
@@ -183,6 +234,23 @@ class SmartInsightsView extends ConsumerWidget {
             child: Text('No Smart proxy groups in the active profile.'),
           ),
         ...smartGroups.map((group) => _groupCard(context, group)),
+        if (candidates.isNotEmpty)
+          ExpansionTile(
+            title: const Text('Enable Smart for an existing group'),
+            subtitle: const Text(
+              'Local reversible conversion; original subscription unchanged.',
+            ),
+            children: candidates.map(
+              (group) => ListTile(
+                title: Text(group.name),
+                subtitle: Text('Currently ${group.type.name}'),
+                trailing: OutlinedButton(
+                  onPressed: () => _enableSmart(context, ref, group),
+                  child: const Text('Enable Smart'),
+                ),
+              ),
+            ).toList(),
+          ),
       ],
     );
   }
