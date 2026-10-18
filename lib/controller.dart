@@ -2071,8 +2071,20 @@ class AppController {
         )
         .toList();
     final profiles = archive.files.where(
-      (item) => !item.name.endsWith('.json') && item.name != '.bettbox_marker',
+      (item) =>
+          !item.name.endsWith('.json') &&
+          item.name != '.bettbox_marker' &&
+          !item.name.startsWith('smart-learning/'),
     );
+    // Learning records are never restored through the generic file extractor
+    // because it could overwrite an active bbolt database. Stage a validated,
+    // opt-in local snapshot for the next core startup instead.
+    final learningSnapshots = archive.files.where(
+      (item) => item.name == 'smart-learning/smart.db',
+    ).toList();
+    if (learningSnapshots.length > 1) {
+      throw StateError('Duplicate Smart learning snapshots in backup');
+    }
 
     // Find config.json
     final configIndex = configs.indexWhere(
