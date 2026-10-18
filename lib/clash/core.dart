@@ -82,6 +82,9 @@ class ClashCore {
     return clashInterface.decryptAgeConfig(data, ageSecretKey);
   }
 
+  /// Explicit local backup only. Never called by automatic WebDAV backup.
+  Future<String> exportSmartLearning() => clashInterface.exportSmartLearning();
+
   Future<String> updateConfig(UpdateParams updateParams) async {
     return await clashInterface.updateConfig(updateParams);
   }
