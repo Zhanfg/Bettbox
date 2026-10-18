@@ -60,7 +60,7 @@ func TestSmartLearningBackupContainsOnlyPrivateScopedLearning(t *testing.T) {
 		b := tx.Bucket([]byte("smart_stats"))
 		if b == nil { t.Fatal("no restored learning bucket") }
 		got:=string(b.Get([]byte("smart/stats/config:bettbox-alpha/Auto/example/node1")))
-		if got != "{\\"success\\":42}" {
+		if got != `{"success":42}` {
 			t.Fatalf("restored learning record mismatch: %s",got)
 		}
 		return nil
