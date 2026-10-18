@@ -466,7 +466,11 @@ class _GroupHeader extends ConsumerWidget {
                   Row(
                     children: [
                       Text(
-                        group.type.name,
+                        group.type == GroupType.Smart
+                            ? (group.fixed?.isNotEmpty == true
+                                ? 'Smart · 已固定'
+                                : 'Smart · 自动选路')
+                            : group.type.name,
                         style: context.textTheme.labelMedium?.toLight,
                       ),
                       if (selectedProxyName.isNotEmpty) ...[
