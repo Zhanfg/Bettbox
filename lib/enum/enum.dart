@@ -234,6 +234,7 @@ enum ActionMethod {
   getConfig,
   getProxies,
   getSmartRankings,
+  exportSmartLearning,
   changeProxy,
   getTraffic,
   getTotalTraffic,
