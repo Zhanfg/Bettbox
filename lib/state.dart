@@ -1124,6 +1124,7 @@ class GlobalState {
         rawConfig['proxy-groups'] is List) {
       const supported = <String>{
         'country',
+        'policy-priority',
         'country-affinity',
         'prefer-asn',
         'auto-ip-family',
