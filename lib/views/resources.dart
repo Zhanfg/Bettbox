@@ -8,6 +8,7 @@ import 'package:bett_box/providers/config.dart';
 import 'package:bett_box/state.dart';
 import 'package:bett_box/widgets/widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' hide context;
 
@@ -403,7 +404,10 @@ class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
     _status = SmartLiteModel.status();
   }
 
-  Future<void> _update({required bool restore}) async {
+  // All model operations use Bettbox's existing resource IPC, never a
+  // second download manager. The core validates feature schema before any
+  // model is activated and retains the original bundled Lite fallback.
+  Future<void> _modelAction(String type, String value) async {
     final notifier = ref.read(geoUpdatingKeysProvider.notifier);
     if (ref.read(geoUpdatingKeysProvider).contains('lgbm')) return;
     await globalState.appController.safeRun<void>(
@@ -411,12 +415,7 @@ class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
         notifier.update((state) => Set.of(state)..add('lgbm'));
         try {
           final message = await clashCore.updateGeoData(
-            UpdateGeoDataParams(
-              geoName: restore
-                  ? SmartLiteModel.fallbackName
-                  : SmartLiteModel.activeName,
-              geoType: restore ? 'LGBM-LITE' : 'LGBM',
-            ),
+            UpdateGeoDataParams(geoName: value, geoType: type),
           );
           if (message.isNotEmpty) throw StateError(message);
         } finally {
@@ -429,6 +428,18 @@ class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
     );
   }
 
+  Future<void> _importLocal() async {
+    final selected = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['bin', 'txt'],
+      withData: false,
+    );
+    if (selected == null || selected.files.isEmpty) return;
+    final path = selected.files.single.path;
+    if (path == null || path.isEmpty) return;
+    await _modelAction('LGBM-IMPORT', path);
+  }
+
   @override
   Widget build(BuildContext context) {
     final syncing = ref.watch(
@@ -436,7 +447,7 @@ class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
     );
     return ListItem(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      title: const Text('Smart · Lite Model'),
+      title: const Text('Smart · Models'),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -447,31 +458,25 @@ class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
               final info = snapshot.data;
               if (snapshot.hasError) {
                 return Text(
-                  'Cannot inspect Lite model: ${snapshot.error}',
+                  'Cannot inspect Smart models: ${snapshot.error}',
                   style: context.textTheme.bodyMedium,
                 );
               }
-              if (info == null) {
-                return const LinearProgressIndicator();
-              }
-              final active = !info.activeExists
-                  ? 'Missing'
-                  : info.activeIsLite
-                      ? 'Lite baseline'
-                      : 'Updated / custom model';
+              if (info == null) return const LinearProgressIndicator();
               final fallback = info.fallbackVerified
                   ? 'Offline Lite fallback verified'
-                  : 'Offline fallback unavailable';
+                  : 'Offline Lite fallback unavailable';
               return Text(
-                'Active: $active · $fallback',
+                'Active: ${info.activePreset} · ${info.activeSize} bytes · $fallback',
                 style: context.textTheme.bodyMedium,
               );
             },
           ),
           const SizedBox(height: 4),
           Text(
-            'Bundled verified Lite baseline (9.3 MB); updates modify only '
-            'Model.bin, not the offline Model-Lite.bin fallback.',
+            'Lite is bundled for offline startup. You can install larger '
+            'compatible LightGBM models or import a local model; all updates '
+            'leave the bundled Lite fallback untouched.',
             style: context.textTheme.bodyMedium?.toLight,
           ),
           const SizedBox(height: 12),
@@ -480,21 +485,40 @@ class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
             spacing: 12,
             children: [
               CommonChip(
-                avatar: syncing
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.sync),
-                label: 'Update model',
-                onPressed: syncing ? null : () => _update(restore: false),
+                avatar: const Icon(Icons.restore),
+                label: 'Lite · 9.3 MB (bundled)',
+                onPressed: syncing
+                    ? null
+                    : () => _modelAction('LGBM-PRESET', 'lite'),
               ),
               CommonChip(
-                avatar: const Icon(Icons.restore),
-                label: 'Restore bundled Lite',
-                onPressed: syncing ? null : () => _update(restore: true),
+                avatar: const Icon(Icons.download_outlined),
+                label: 'Middle · 18.4 MB',
+                onPressed: syncing
+                    ? null
+                    : () => _modelAction('LGBM-PRESET', 'middle'),
               ),
+              CommonChip(
+                avatar: const Icon(Icons.download_outlined),
+                label: 'Large · 26.8 MB',
+                onPressed: syncing
+                    ? null
+                    : () => _modelAction('LGBM-PRESET', 'large'),
+              ),
+              CommonChip(
+                avatar: const Icon(Icons.folder_open),
+                label: 'Import compatible model',
+                onPressed: syncing ? null : _importLocal,
+              ),
+              if (syncing)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
             ],
           ),
         ],
