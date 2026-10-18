@@ -103,6 +103,13 @@ jobs:
           flutter build windows --release --dart-define=CORE_SHA256=$env:CORE_SHA256 --dart-define=APP_ENV=pre --dart-define=APP_ASSET_SUFFIX=windows-amd64-compatible-setup.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path 'build/windows/x64/runner/Release/Bettbox.exe')) { throw 'Missing Windows app executable' }
+          # The real Windows output must carry the model, not merely the build workspace.
+          $lite = 'build/windows/x64/runner/Release/data/flutter_assets/assets/data/Model-Lite.bin'
+          if (-not (Test-Path $lite)) { throw 'Release missing offline Lite fallback' }
+          $expected = '23633022a815fb34e510befe1c176ba50af3ced48f08b172454f4cd6b8327788'
+          if ((Get-FileHash $lite -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
+            throw 'Release Lite fallback digest mismatch'
+          }
 
       - name: Package portable ZIP (no installer signing required)
         shell: pwsh
