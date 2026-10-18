@@ -149,6 +149,20 @@ class ClashCore {
     });
   }
 
+  Future<List<Map<String, dynamic>>> getSmartRankings(String groupName) async {
+    final data = await clashInterface.getSmartRankings(groupName);
+    if (data.isEmpty) return [];
+    final decoded = json.decode(data);
+    if (decoded is! Map) throw const FormatException('Invalid Smart ranking response');
+    if (decoded['error'] != null) throw StateError(decoded['error'].toString());
+    final weights = decoded['weights'];
+    if (weights is! List) return [];
+    return weights
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
   FutureOr<String> changeProxy(ChangeProxyParams changeProxyParams) async {
     return await clashInterface.changeProxy(changeProxyParams);
   }
