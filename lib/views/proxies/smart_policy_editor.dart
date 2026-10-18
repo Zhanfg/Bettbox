@@ -144,6 +144,19 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
       }
     }
 
+    // Opening Preferences and pressing Save without an edit is a no-op.
+    // Reloading the entire proxy profile otherwise causes needless churn.
+    final didEdit = reset
+        ? previous.containsKey(widget.group.name)
+        : country != _initialCountry.trim().toUpperCase() ||
+            _sampleRate.text.trim() != _initialSampleRate.trim() ||
+            _policyPriority.text.trim() != _initialPolicyPriority.trim() ||
+            _changedFlags.isNotEmpty;
+    if (!didEdit) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+
     setState(() {
       _saving = true;
       _error = null;
@@ -202,7 +215,6 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
                 ),
               ),
               const SizedBox(height: 8),
-              const SizedBox(height: 4),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('自动适配 IPv4 / IPv6'),
