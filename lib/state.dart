@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:bett_box/clash/clash.dart';
+import 'package:bett_box/clash/smart_learning_policy.dart';
 import 'package:bett_box/common/theme.dart';
 import 'package:bett_box/enum/enum.dart';
 import 'package:bett_box/l10n/l10n.dart';
@@ -1117,19 +1118,17 @@ class GlobalState {
       }
     }
 
-    // Opt-in group type migration is profile-local and reversible. Do not
-    // rewrite the user's subscription, or automatically convert GLOBAL.
+    // Opt-in migration changes only the in-memory config. Smart learns
+    // online from completed connections, and our bundled LightGBM is usable
+    // immediately on first conversion. Raw CSV collection stays optional.
     if (targetProfile.smartGroupOverrides.isNotEmpty &&
         rawConfig['proxy-groups'] is List) {
       for (final group in rawConfig['proxy-groups'] as List) {
-        if (group is! Map || group['name'] is! String) continue;
-        final name = group['name'] as String;
-        if (name == 'GLOBAL' ||
-            !targetProfile.smartGroupOverrides.contains(name)) continue;
-        if (const {'select', 'url-test', 'fallback', 'load-balance'}
-            .contains(group['type'])) {
-          group['type'] = 'smart';
-        }
+        if (group is! Map) continue;
+        enableSmartLearningForConvertedGroup(
+          group,
+          targetProfile.smartGroupOverrides,
+        );
       }
     }
 
