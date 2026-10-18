@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/metacubex/bbolt"
 	"github.com/metacubex/mihomo/component/profile/cachefile"
@@ -41,15 +43,9 @@ func exportSmartLearningSnapshot() (string, error) {
 	err = cache.DB.View(func(read *bbolt.Tx) error {
 		source := read.Bucket([]byte("smart_stats"))
 		if source == nil { return fmt.Errorf("no Smart learning records") }
+		_ = source
 		return target.Update(func(write *bbolt.Tx) error {
-			dest, err := write.CreateBucketIfNotExists([]byte("smart_stats"))
-			if err != nil { return err }
-			return source.ForEach(func(key, value []byte) error {
-				if len(key) < 6 || string(key[:6]) != "smart/" {
-					return fmt.Errorf("unexpected Smart learning key")
-				}
-				return dest.Put(key, value)
-			})
+			return copySmartLearningRecords(read, write)
 		})
 	})
 	if err != nil { return "", err }
@@ -57,4 +53,51 @@ func exportSmartLearningSnapshot() (string, error) {
 	if err := target.Close(); err != nil { return "", err }
 	success = true
 	return filepath.Clean(path), nil
+}
+
+
+const pendingLearningFilename = ".bettbox-smart-learning-pending.db"
+
+// copySmartLearningRecords is used by export and import and enforces that
+// neither operation serializes unrelated cache DB buckets.
+func copySmartLearningRecords(src, dst *bbolt.Tx) error {
+	source := src.Bucket([]byte("smart_stats"))
+	if source == nil { return fmt.Errorf("no Smart learning bucket") }
+	target, err := dst.CreateBucketIfNotExists([]byte("smart_stats"))
+	if err != nil { return err }
+	return source.ForEach(func(key, value []byte) error {
+		if !strings.HasPrefix(string(key), "smart/") {
+			return fmt.Errorf("unexpected Smart learning key")
+		}
+		if len(value) > 1<<20 {
+			return fmt.Errorf("Smart learning record too large")
+		}
+		return target.Put(key, value)
+	})
+}
+
+// Applied once, before Smart groups load and cache their online students.
+// The UI stages an explicitly restored snapshot; it must never overwrite
+// cache.db while that database is open or an active Smart group is learning.
+func restorePendingSmartLearning() error {
+	path := filepath.Join(C.Path.HomeDir(), pendingLearningFilename)
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) { return nil }
+	if err != nil { return err }
+	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 512<<20 {
+		return fmt.Errorf("invalid pending Smart learning snapshot")
+	}
+	source, err := bbolt.Open(path, 0o600,
+		&bbolt.Options{ReadOnly: true, Timeout: time.Second})
+	if err != nil { return fmt.Errorf("open Smart learning restore: %w", err) }
+	defer source.Close()
+	target := cachefile.Cache()
+	if target == nil || target.DB == nil { return fmt.Errorf("core cache DB unavailable") }
+	err = source.View(func(read *bbolt.Tx) error {
+		return target.DB.Update(func(write *bbolt.Tx) error {
+			return copySmartLearningRecords(read, write)
+		})
+	})
+	if err != nil { return fmt.Errorf("restore Smart learning: %w", err) }
+	return os.Remove(path)
 }
