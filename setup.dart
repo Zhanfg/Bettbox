@@ -194,7 +194,8 @@ class Build {
     bool compatible = false,
   }) async {
     final isLib = mode == Mode.lib;
-    final useSmartCore = !compatible;
+    // CPU compatibility must not silently select the legacy proxy core on Windows.
+    final useSmartCore = target == Target.windows || !compatible;
 
     if (useSmartCore) {
       await SmartCoreSync.prepare();
@@ -847,8 +848,8 @@ class BuildCommand extends Command {
         final token = target != Target.android
             ? await Build.calcSha256(corePaths.first)
             : null;
-        Build.buildHelper(target, token!);
-        _buildDistributor(
+        await Build.buildHelper(target, token!);
+        await _buildDistributor(
           target: target,
           targets: 'exe',
           args: ' --description $desc --build-dart-define=CORE_SHA256=$token',
