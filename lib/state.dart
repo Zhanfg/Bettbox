@@ -1117,6 +1117,36 @@ class GlobalState {
       }
     }
 
+    // Apply app-local Smart preferences only to Smart proxy groups. The
+    // subscribed YAML stays immutable and these preferences survive updates.
+    // Do not turn other group types into Smart or mutate unknown keys.
+    if (targetProfile.smartPolicies.isNotEmpty &&
+        rawConfig['proxy-groups'] is List) {
+      const supported = <String>{
+        'country',
+        'country-affinity',
+        'prefer-asn',
+        'auto-ip-family',
+        'prefer-ipv4',
+        'require-ipv4',
+        'require-ipv6',
+        'uselightgbm',
+        'collectdata',
+        'sample-rate',
+      };
+      for (final group in rawConfig['proxy-groups'] as List) {
+        if (group is! Map || group['type'] != 'smart') continue;
+        final name = group['name'];
+        if (name is! String) continue;
+        final overrides = targetProfile.smartPolicies[name];
+        if (overrides == null) continue;
+        for (final entry in overrides.entries) {
+          if (!supported.contains(entry.key)) continue;
+          group[entry.key] = entry.value;
+        }
+      }
+    }
+
     rawConfig.remove('rule');
     rawConfig['rules'] = rules;
     return rawConfig;
