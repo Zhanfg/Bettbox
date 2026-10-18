@@ -302,6 +302,15 @@ abstract class ClashHandlerInterface with ClashInterface {
   }
 
   @override
+  Future<String> getSmartRankings(String groupName) {
+    return invoke<String>(
+      method: ActionMethod.getSmartRankings,
+      data: groupName,
+      timeout: const Duration(seconds: 5),
+    );
+  }
+
+  @override
   FutureOr<String> changeProxy(ChangeProxyParams changeProxyParams) {
     return invoke<String>(
       method: ActionMethod.changeProxy,
