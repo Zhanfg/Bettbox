@@ -645,8 +645,12 @@ class AppController {
           globalState.showNotifier(
             'TUN mode requires administrator privileges.',
           );
-          enableTun = false;
-          break;
+          // Roll back the requested toggle instead of leaving the UI showing
+          // TUN enabled when no privileged service was started.
+          _ref.read(patchClashConfigProvider.notifier).updateState(
+            (state) => state.copyWith.tun(enable: realTunEnable),
+          );
+          return Result.error('TUN administrator authorization failed');
       }
     }
     _ref.read(realTunEnableProvider.notifier).value = enableTun;
@@ -1668,16 +1672,22 @@ class AppController {
     });
   }
 
-  void updateTun() {
-    _ref
-        .read(patchClashConfigProvider.notifier)
-        .updateState((state) => state.copyWith.tun(enable: !state.tun.enable));
+  // All TUN entrypoints (tray, dashboard, Network settings) must use the
+  // same serialized permission/core lifecycle path.
+  void setTunEnabled(bool enabled) {
+    if (_ref.read(patchClashConfigProvider).tun.enable == enabled) return;
+    _ref.read(patchClashConfigProvider.notifier).updateState(
+      (state) => state.copyWith.tun(enable: enabled),
+    );
     if (system.isLinux && globalState.backgroundMode.value) {
       unawaited(updateClashConfig());
     } else {
       updateClashConfigDebounce();
     }
   }
+
+  void updateTun() =>
+      setTunEnabled(!_ref.read(patchClashConfigProvider).tun.enable);
 
   void updateSystemProxy() {
     _ref
