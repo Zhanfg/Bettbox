@@ -392,6 +392,16 @@ func handleUpdateGeoData(geoType string, geoName string, fn func(value string)) 
 	go func() {
 		path := constant.Path.Resolve(geoName)
 		switch geoType {
+		case "LGBM":
+			if err := updateLgbmModelCompat(); err != nil {
+				fn(err.Error())
+				return
+			}
+		case "LGBM-LITE":
+			if err := restoreBundledLiteCompat(); err != nil {
+				fn(err.Error())
+				return
+			}
 		case "MMDB":
 			err := updateMMDBWithPathCompat(path)
 			if err != nil {
