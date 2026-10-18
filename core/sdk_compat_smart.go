@@ -102,3 +102,14 @@ func updateGeoSiteWithPathCompat(path string) error {
 func setURLTestHookCompat(_ func(url, name string, delay uint16)) {}
 func setRequestNotifyCompat(_ func(statistic.Tracker)) {}
 func setProviderLoadedHookCompat(_ func(string)) {}
+
+ 
+// Bettbox's explicit test and provider-update operations still need UI events
+// even though upstream Smart no longer exposes the legacy push callbacks.
+func notifyDelayResultCompat(data *Delay) {
+    sendMessage(Message{Type: DelayMessage, Data: data})
+}
+
+func notifyProviderUpdatedCompat(name string) {
+    sendMessage(Message{Type: LoadedMessage, Data: name})
+}
