@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:bett_box/clash/core.dart';
@@ -10,11 +11,33 @@ import 'package:bett_box/state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// A live, read-only view of Smart V11's actual proxy-group snapshots.
-/// The only mutation here is releasing an explicit manual pin; tuning the
-/// immutable group policy requires editing the profile and reloading it.
-class SmartInsightsView extends ConsumerWidget {
+/// This view polls only while it is visible. Smart V11 does not expose
+/// Bettbox's legacy push hooks, so polling is needed for truthful snapshots.
+class SmartInsightsView extends ConsumerStatefulWidget {
   const SmartInsightsView({super.key});
+
+  @override
+  ConsumerState<SmartInsightsView> createState() => _SmartInsightsViewState();
+}
+
+class _SmartInsightsViewState extends ConsumerState<SmartInsightsView> {
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted || !globalState.isInit || !globalState.isStart) return;
+      globalState.appController.updateGroupsDebounce();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
 
   Future<void> _enableSmart(
     BuildContext context,
@@ -257,7 +280,8 @@ class SmartInsightsView extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final ref = this.ref;
     final allGroups = ref.watch(groupsProvider);
     final smartGroups = allGroups
         .where((group) => group.type == GroupType.Smart)
