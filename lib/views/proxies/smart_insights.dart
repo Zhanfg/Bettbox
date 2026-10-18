@@ -48,12 +48,18 @@ class _SmartInsightsViewState extends ConsumerState<SmartInsightsView> {
     if (profile == null || group.name == 'GLOBAL') return;
     final nextTypes = Set<String>.from(profile.smartGroupOverrides)
       ..add(group.name);
+    final previous = Map<String, String>.from(profile.smartPreviousSelections);
+    final originalSelection = profile.selectedMap[group.name];
+    if (originalSelection != null) {
+      previous[group.name] = originalSelection;
+    }
     final selected = Map<String, String>.from(profile.selectedMap)
       ..remove(group.name);
     ref.read(profilesProvider.notifier).updateProfile(
       profile.id,
       (value) => value.copyWith(
         smartGroupOverrides: nextTypes,
+        smartPreviousSelections: previous,
         selectedMap: selected,
       ),
     );
@@ -71,12 +77,63 @@ class _SmartInsightsViewState extends ConsumerState<SmartInsightsView> {
         profile.id,
         (value) => value.copyWith(
           smartGroupOverrides: profile.smartGroupOverrides,
+          smartPreviousSelections: profile.smartPreviousSelections,
           selectedMap: profile.selectedMap,
         ),
       );
       if (context.mounted) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(content: Text('Smart conversion failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _restoreOriginalGroup(
+    BuildContext context,
+    WidgetRef ref,
+    Group group,
+  ) async {
+    final profile = ref.read(currentProfileProvider);
+    if (profile == null ||
+        !profile.smartGroupOverrides.contains(group.name)) return;
+    final nextTypes = Set<String>.from(profile.smartGroupOverrides)
+      ..remove(group.name);
+    final restored = Map<String, String>.from(profile.selectedMap);
+    final previous = Map<String, String>.from(profile.smartPreviousSelections);
+    final oldSelection = previous.remove(group.name);
+    if (oldSelection == null) {
+      restored.remove(group.name);
+    } else {
+      restored[group.name] = oldSelection;
+    }
+    ref.read(profilesProvider.notifier).updateProfile(
+      profile.id,
+      (value) => value.copyWith(
+        smartGroupOverrides: nextTypes,
+        smartPreviousSelections: previous,
+        selectedMap: restored,
+      ),
+    );
+    try {
+      final config = await globalState.patchRawConfig(
+        patchConfig: ref.read(patchClashConfigProvider),
+      );
+      final validation = await clashCore.validateConfig(json.encode(config));
+      if (validation.isNotEmpty) throw StateError(validation);
+      await globalState.appController.applyProfile(silence: true);
+    } catch (e) {
+      ref.read(profilesProvider.notifier).updateProfile(
+        profile.id,
+        (value) => value.copyWith(
+          smartGroupOverrides: profile.smartGroupOverrides,
+          smartPreviousSelections: profile.smartPreviousSelections,
+          selectedMap: profile.selectedMap,
+        ),
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text('Could not restore group: $e')),
         );
       }
     }
@@ -166,6 +223,9 @@ class _SmartInsightsViewState extends ConsumerState<SmartInsightsView> {
     final endToEnd = group.endToEnd;
     final pin = group.fixed ?? '';
     final isPinned = pin.isNotEmpty;
+    final wasConverted = ref.watch(currentProfileProvider)
+            ?.smartGroupOverrides.contains(group.name) ??
+        false;
     final lastNode = path?['node'];
     final lastTarget = endToEnd?['target'];
     final country = group.country;
@@ -258,6 +318,15 @@ class _SmartInsightsViewState extends ConsumerState<SmartInsightsView> {
                 label: const Text('Edit Smart policy'),
               ),
             ),
+            if (wasConverted)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => _restoreOriginalGroup(context, ref, group),
+                  icon: const Icon(Icons.restore),
+                  label: const Text('Restore original group type'),
+                ),
+              ),
             if (isPinned) ...[
               const SizedBox(height: 8),
               Align(
