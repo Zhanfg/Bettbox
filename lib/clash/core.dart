@@ -5,6 +5,7 @@ import 'dart:isolate';
 
 import 'package:bett_box/clash/clash.dart';
 import 'package:bett_box/clash/interface.dart';
+import 'package:bett_box/clash/smart_lite_model.dart';
 import 'package:bett_box/common/common.dart';
 import 'package:bett_box/enum/enum.dart';
 import 'package:bett_box/models/models.dart';
@@ -54,6 +55,9 @@ class ClashCore {
 
   Future<bool> init() async {
     await initGeo();
+    // Guarantee offline model availability before initializing Smart.
+    // The existing active model is never overwritten by this bootstrap.
+    await SmartLiteModel.provision();
     final homeDirPath = await appPath.homeDirPath;
     return await clashInterface.init(
       InitParams(homeDir: homeDirPath, version: globalState.appState.version),
