@@ -102,6 +102,7 @@ const (
 	updateConfigMethod             Method = "updateConfig"
 	getProxiesMethod               Method = "getProxies"
 	getSmartRankingsMethod         Method = "getSmartRankings"
+	exportSmartLearningMethod       Method = "exportSmartLearning"
 	changeProxyMethod              Method = "changeProxy"
 	getTrafficMethod               Method = "getTraffic"
 	getTotalTrafficMethod          Method = "getTotalTraffic"
