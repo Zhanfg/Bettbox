@@ -294,6 +294,7 @@ abstract class Group with _$Group {
     // Smart V11 exposes the active policy and last observed path via core JSON.
     // Keep these nullable: normal proxy groups and older cores omit them.
     String? fixed,
+    @JsonKey(name: 'policy-priority') String? policyPriority,
     String? country,
     bool? countryAffinity,
     bool? autoIPFamily,
