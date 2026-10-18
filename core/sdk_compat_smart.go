@@ -196,3 +196,11 @@ func setProviderLoadedHookCompat(fn func(string)) {
 // background operations. Avoid duplicates from Bettbox's manual action path.
 func notifyDelayResultCompat(_ *Delay) {}
 func notifyProviderUpdatedCompat(_ string) {}
+
+func updateLgbmModelCompat() error {
+	return updater.UpdateLgbmModelDatabase()
+}
+
+func restoreBundledLiteCompat() error {
+	return updater.RestoreBundledLiteModel()
+}
