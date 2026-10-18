@@ -440,6 +440,44 @@ class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
     await _modelAction('LGBM-IMPORT', path);
   }
 
+  Future<void> _chooseModel() async {
+    if (ref.read(geoUpdatingKeysProvider).contains('lgbm')) return;
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('选择 Smart 模型'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogContext, 'lite'),
+            child: const ListTile(
+              leading: Icon(Icons.offline_bolt_outlined),
+              title: Text('Lite · 9.3 MB'),
+              subtitle: Text('随包内置，无需联网，可随时恢复'),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogContext, 'middle'),
+            child: const ListTile(
+              leading: Icon(Icons.download_outlined),
+              title: Text('Middle · 18.4 MB'),
+              subtitle: Text('按需下载并缓存'),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogContext, 'large'),
+            child: const ListTile(
+              leading: Icon(Icons.download_outlined),
+              title: Text('Large · 26.8 MB'),
+              subtitle: Text('按需下载并缓存'),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || chosen == null) return;
+    await _modelAction('LGBM-PRESET', chosen);
+  }
+
   @override
   Widget build(BuildContext context) {
     final syncing = ref.watch(
@@ -447,7 +485,8 @@ class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
     );
     return ListItem(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      title: const Text('Smart · Models'),
+      leading: const Icon(Icons.model_training_outlined),
+      title: const Text('Smart 模型'),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -458,71 +497,76 @@ class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
               final info = snapshot.data;
               if (snapshot.hasError) {
                 return Text(
-                  'Cannot inspect Smart models: ${snapshot.error}',
+                  '模型状态读取失败：${snapshot.error}',
                   style: context.textTheme.bodyMedium,
                 );
               }
               if (info == null) return const LinearProgressIndicator();
-              final fallback = info.fallbackVerified
-                  ? 'Offline Lite fallback verified'
-                  : 'Offline Lite fallback unavailable';
               return Text(
-                'Active: ${info.activePreset} · ${info.activeSize} bytes · $fallback',
+                '当前：${info.activePreset} · '
+                '${info.fallbackVerified ? '内置 Lite 回退可用' : '回退模型不可用'}',
                 style: context.textTheme.bodyMedium,
               );
             },
           ),
           const SizedBox(height: 4),
           Text(
-            'Lite is bundled for offline startup. You can install larger '
-            'compatible LightGBM models or import a local model; all updates '
-            'leave the bundled Lite fallback untouched.',
+            '首次启动使用内置 Lite；可选更大模型，原有资源不受影响。',
             style: context.textTheme.bodyMedium?.toLight,
           ),
           const SizedBox(height: 12),
           Wrap(
-            runSpacing: 6,
             spacing: 12,
+            runSpacing: 6,
             children: [
               CommonChip(
-                avatar: const Icon(Icons.restore),
-                label: 'Lite · 9.3 MB (bundled)',
-                onPressed: syncing
-                    ? null
-                    : () => _modelAction('LGBM-PRESET', 'lite'),
-              ),
-              CommonChip(
-                avatar: const Icon(Icons.download_outlined),
-                label: 'Middle · 18.4 MB',
-                onPressed: syncing
-                    ? null
-                    : () => _modelAction('LGBM-PRESET', 'middle'),
-              ),
-              CommonChip(
-                avatar: const Icon(Icons.download_outlined),
-                label: 'Large · 26.8 MB',
-                onPressed: syncing
-                    ? null
-                    : () => _modelAction('LGBM-PRESET', 'large'),
+                avatar: const Icon(Icons.swap_horiz),
+                label: '切换模型',
+                onPressed: syncing ? null : _chooseModel,
               ),
               CommonChip(
                 avatar: const Icon(Icons.folder_open),
-                label: 'Import compatible model',
+                label: '导入模型',
                 onPressed: syncing ? null : _importLocal,
               ),
               if (syncing)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+                const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
+            ],
+          ),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text('模型维护'),
+            subtitle: const Text('更新当前模型、排障与手动恢复'),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: syncing
+                      ? null
+                      : () => _modelAction('LGBM', SmartLiteModel.activeName),
+                  icon: const Icon(Icons.sync),
+                  label: const Text('更新在线模型'),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: syncing
+                      ? null
+                      : () => _modelAction('LGBM-PRESET', 'lite'),
+                  icon: const Icon(Icons.restore),
+                  label: const Text('恢复内置 Lite'),
+                ),
+              ),
             ],
           ),
         ],
       ),
     );
   }
+
 }
