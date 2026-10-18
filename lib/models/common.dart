@@ -326,6 +326,11 @@ extension GroupExt on Group {
   String get realNow => now ?? '';
 
   String getCurrentSelectedName(String proxyName) {
+    // Smart chooses per destination; an automatic winner is NOT a global pin.
+    // Only highlight a node when the running core reports an explicit pin.
+    if (type == GroupType.Smart) {
+      return fixed ?? '';
+    }
     if (type.isComputedSelected) {
       return realNow.isNotEmpty ? realNow : proxyName;
     }
