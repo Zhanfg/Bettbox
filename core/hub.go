@@ -59,6 +59,11 @@ func handleInitClash(paramsString string) bool {
 	version = params.Version
 	if !isInit {
 		constant.SetHomeDir(params.HomeDir)
+		// Apply any explicitly staged learning backup before Smart caches
+		// or proxy groups are initialized. Never copy over an open cache.db.
+		if err := restorePendingSmartLearning(); err != nil {
+			log.Warnln("[Smart] deferred learning restore not applied: %v", err)
+		}
 		isInit = true
 		ensureLogSubscriber()
 	}
