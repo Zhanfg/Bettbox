@@ -274,6 +274,7 @@ func handleAsyncTestDelay(paramsString string, fn func(string)) {
 		if proxy == nil {
 			delayData.Value = -1
 			data, _ := json.Marshal(delayData)
+			notifyDelayResultCompat(delayData)
 			fn(string(data))
 			return false, nil
 		}
@@ -289,12 +290,14 @@ func handleAsyncTestDelay(paramsString string, fn func(string)) {
 		if err != nil || delay == 0 {
 			delayData.Value = -1
 			data, _ := json.Marshal(delayData)
+			notifyDelayResultCompat(delayData)
 			fn(string(data))
 			return false, nil
 		}
 
 		delayData.Value = int32(delay)
 		data, _ := json.Marshal(delayData)
+		notifyDelayResultCompat(delayData)
 		fn(string(data))
 		return false, nil
 	})
@@ -424,6 +427,7 @@ func handleUpdateExternalProvider(providerName string, fn func(value string)) {
 			fn(err.Error())
 			return
 		}
+		notifyProviderUpdatedCompat(providerName)
 		fn("")
 	}()
 }
@@ -442,6 +446,7 @@ func handleSideLoadExternalProvider(providerName string, data []byte, fn func(va
 			fn(err.Error())
 			return
 		}
+		notifyProviderUpdatedCompat(providerName)
 		fn("")
 	}()
 }
