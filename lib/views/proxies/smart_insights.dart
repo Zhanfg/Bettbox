@@ -121,6 +121,20 @@ class SmartInsightsView extends ConsumerWidget {
               _field('Loss ratio', _display(endToEnd['lossRate'])),
               _field('Failed', _display(endToEnd['failed'])),
             ],
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () {
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => SmartPolicyEditor(group: group),
+                  );
+                },
+                icon: const Icon(Icons.tune),
+                label: const Text('Edit Smart policy'),
+              ),
+            ),
             if (isPinned) ...[
               const SizedBox(height: 8),
               Align(
