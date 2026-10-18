@@ -1,6 +1,7 @@
 import 'package:bett_box/enum/enum.dart';
 import 'package:bett_box/models/common.dart';
 import 'package:bett_box/providers/providers.dart';
+import 'smart_policy_editor.dart';
 import 'package:bett_box/state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
