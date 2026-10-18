@@ -65,9 +65,10 @@ class TUNItem extends ConsumerWidget {
       delegate: SwitchDelegate(
         value: enable,
         onChanged: (value) async {
-          ref
-              .read(patchClashConfigProvider.notifier)
-              .updateState((state) => state.copyWith.tun(enable: value));
+          // Reuse dashboard/tray TUN lifecycle: authorization, serialized core
+          // update and rollback on permission errors. A UI-only toggle can
+          // leave the user without the network coverage they expected.
+          globalState.appController.setTunEnabled(value);
         },
       ),
     );
