@@ -291,6 +291,24 @@ abstract class Group with _$Group {
     String? now,
     bool? hidden,
     String? testUrl,
+    // Smart V11 exposes the active policy and last observed path via core JSON.
+    // Keep these nullable: normal proxy groups and older cores omit them.
+    String? fixed,
+    @JsonKey(name: 'policy-priority') String? policyPriority,
+    String? country,
+    bool? countryAffinity,
+    bool? autoIPFamily,
+    bool? preferASN,
+    bool? preferIPv4,
+    bool? preferIPv6,
+    bool? requireIPv4,
+    bool? requireIPv6,
+    bool? collectData,
+    bool? useLightGBM,
+    num? sampleRate,
+    int? tolerance,
+    Map<String, dynamic>? pathProfile,
+    Map<String, dynamic>? endToEnd,
     @Default('') String icon,
     required String name,
   }) = _Group;
@@ -309,6 +327,11 @@ extension GroupExt on Group {
   String get realNow => now ?? '';
 
   String getCurrentSelectedName(String proxyName) {
+    // Smart chooses per destination; an automatic winner is NOT a global pin.
+    // Only highlight a node when the running core reports an explicit pin.
+    if (type == GroupType.Smart) {
+      return fixed ?? '';
+    }
     if (type.isComputedSelected) {
       return realNow.isNotEmpty ? realNow : proxyName;
     }

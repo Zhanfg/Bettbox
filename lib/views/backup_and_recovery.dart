@@ -116,8 +116,35 @@ class _BackupAndRecoveryState extends ConsumerState<BackupAndRecovery> {
   }
 
   Future<void> _backupOnLocal(BuildContext context) async {
+    // Privacy: long-term learning can reveal network/target affinity. Ask
+    // only on an explicit local backup, never on automatic WebDAV uploads.
+    final includeLearning = system.isWindows
+        ? await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('本地备份'),
+              content: const Text(
+                '是否同时备份 Smart 长期学习记录？其中可能包含节点、目标及网络使用特征。'
+                '仅保存到你选择的本地文件，不会自动上传到 WebDAV。',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('普通备份'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('包含学习记录'),
+                ),
+              ],
+            ),
+          )
+        : false;
+    if (includeLearning == null || !context.mounted) return;
     final res = await globalState.appController.safeRun<bool>(() async {
-      final backupData = await globalState.appController.backupData();
+      final backupData = await globalState.appController.backupData(
+        includeSmartLearning: includeLearning,
+      );
       final value = await picker.saveFile(
         utils.getBackupFileName(),
         Uint8List.fromList(backupData),

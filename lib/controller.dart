@@ -645,8 +645,12 @@ class AppController {
           globalState.showNotifier(
             'TUN mode requires administrator privileges.',
           );
-          enableTun = false;
-          break;
+          // Roll back the requested toggle instead of leaving the UI showing
+          // TUN enabled when no privileged service was started.
+          _ref.read(patchClashConfigProvider.notifier).updateState(
+            (state) => state.copyWith.tun(enable: realTunEnable),
+          );
+          return Result.error('TUN administrator authorization failed');
       }
     }
     _ref.read(realTunEnableProvider.notifier).value = enableTun;
@@ -1668,16 +1672,22 @@ class AppController {
     });
   }
 
-  void updateTun() {
-    _ref
-        .read(patchClashConfigProvider.notifier)
-        .updateState((state) => state.copyWith.tun(enable: !state.tun.enable));
+  // All TUN entrypoints (tray, dashboard, Network settings) must use the
+  // same serialized permission/core lifecycle path.
+  void setTunEnabled(bool enabled) {
+    if (_ref.read(patchClashConfigProvider).tun.enable == enabled) return;
+    _ref.read(patchClashConfigProvider.notifier).updateState(
+      (state) => state.copyWith.tun(enable: enabled),
+    );
     if (system.isLinux && globalState.backgroundMode.value) {
       unawaited(updateClashConfig());
     } else {
       updateClashConfigDebounce();
     }
   }
+
+  void updateTun() =>
+      setTunEnabled(!_ref.read(patchClashConfigProvider).tun.enable);
 
   void updateSystemProxy() {
     _ref
@@ -1802,7 +1812,7 @@ class AppController {
         null;
   }
 
-  Future<List<int>> backupData() async {
+  Future<List<int>> backupData({bool includeSmartLearning = false}) async {
     final homeDirPath = await appPath.homeDirPath;
     final profilesPath = await appPath.profilesPath;
     final configJson = globalState.config.toJson();
@@ -1827,7 +1837,18 @@ class AppController {
       'Starting backup: ${validProfileIds.length} profiles, current: $currentProfileId',
     );
 
-    return Isolate.run<List<int>>(() async {
+    // Only explicit, local exports contain learning history. Snapshotting
+    // inside the core avoids copying an open bbolt DB and leaking unrelated
+    // cache records. Never enable this for scheduled WebDAV backups.
+    final learningSnapshot = includeSmartLearning
+        ? await clashCore.exportSmartLearning()
+        : null;
+    if (includeSmartLearning && (learningSnapshot == null || learningSnapshot.isEmpty)) {
+      throw StateError('Smart learning snapshot could not be created');
+    }
+
+    try {
+      return await Isolate.run<List<int>>(() async {
       // Use ZipFileEncoder like FLClash - more reliable than ZipEncoder + Archive
       final tempDir = Directory.systemTemp;
       final tempZipPath = join(
@@ -1915,6 +1936,13 @@ class AppController {
         }
       }
 
+      if (learningSnapshot != null) {
+        final snapshot = File(learningSnapshot);
+        if (!await snapshot.exists()) {
+          throw StateError('Smart learning snapshot disappeared during backup');
+        }
+        await encoder.addFile(snapshot, 'smart-learning/smart.db');
+      }
       encoder.close();
 
       // Read the zip file and return bytes
@@ -1922,7 +1950,15 @@ class AppController {
       final bytes = await zipFile.readAsBytes();
       await zipFile.delete();
       return bytes;
-    });
+      });
+    } finally {
+      // Backup data can contain target/network fingerprints. It must not
+      // remain as a readable temporary database once ZIP creation ends.
+      if (learningSnapshot != null) {
+        final tmp = File(learningSnapshot);
+        if (await tmp.exists()) await tmp.delete();
+      }
+    }
   }
 
   Future<void> updateTray([
@@ -2035,8 +2071,20 @@ class AppController {
         )
         .toList();
     final profiles = archive.files.where(
-      (item) => !item.name.endsWith('.json') && item.name != '.bettbox_marker',
+      (item) =>
+          !item.name.endsWith('.json') &&
+          item.name != '.bettbox_marker' &&
+          !item.name.startsWith('smart-learning/'),
     );
+    // Learning records are never restored through the generic file extractor
+    // because it could overwrite an active bbolt database. Stage a validated,
+    // opt-in local snapshot for the next core startup instead.
+    final learningSnapshots = archive.files.where(
+      (item) => item.name == 'smart-learning/smart.db',
+    ).toList();
+    if (learningSnapshots.length > 1) {
+      throw StateError('Duplicate Smart learning snapshots in backup');
+    }
 
     // Find config.json
     final configIndex = configs.indexWhere(
@@ -2070,6 +2118,31 @@ class AppController {
     }
 
     await restoreBackupFiles(profiles, homeDirPath);
+
+    if (system.isWindows &&
+        recoveryOption == RecoveryOption.all &&
+        learningSnapshots.isNotEmpty) {
+      final snapshotBytes = learningSnapshots.single.content;
+      if (snapshotBytes.isEmpty || snapshotBytes.length > 512 * 1024 * 1024) {
+        throw StateError('Invalid Smart learning snapshot size');
+      }
+      // The core imports this on its next initialization (before any Smart
+      // group is created), so there is no live bbolt/cache clobbering.
+      final pending = File(join(homeDirPath, '.bettbox-smart-learning-pending.db'));
+      final staged = File('${pending.path}.tmp');
+      try {
+        await staged.writeAsBytes(snapshotBytes, flush: true);
+        if (await pending.exists()) {
+          await pending.delete();
+        }
+        await staged.rename(pending.path);
+      } finally {
+        if (await staged.exists()) await staged.delete();
+      }
+      globalState.showNotifier(
+        'Smart learning data staged; restart Bettbox to activate restored history.',
+      );
+    }
 
     _recovery(tempConfig, recoveryOption);
     await savePreferences();

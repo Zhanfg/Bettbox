@@ -59,6 +59,11 @@ func handleInitClash(paramsString string) bool {
 	version = params.Version
 	if !isInit {
 		constant.SetHomeDir(params.HomeDir)
+		// Apply any explicitly staged learning backup before Smart caches
+		// or proxy groups are initialized. Never copy over an open cache.db.
+		if err := restorePendingSmartLearning(); err != nil {
+			log.Warnln("[Smart] deferred learning restore not applied: %v", err)
+		}
 		isInit = true
 		ensureLogSubscriber()
 	}
@@ -274,6 +279,7 @@ func handleAsyncTestDelay(paramsString string, fn func(string)) {
 		if proxy == nil {
 			delayData.Value = -1
 			data, _ := json.Marshal(delayData)
+			notifyDelayResultCompat(delayData)
 			fn(string(data))
 			return false, nil
 		}
@@ -289,12 +295,14 @@ func handleAsyncTestDelay(paramsString string, fn func(string)) {
 		if err != nil || delay == 0 {
 			delayData.Value = -1
 			data, _ := json.Marshal(delayData)
+			notifyDelayResultCompat(delayData)
 			fn(string(data))
 			return false, nil
 		}
 
 		delayData.Value = int32(delay)
 		data, _ := json.Marshal(delayData)
+		notifyDelayResultCompat(delayData)
 		fn(string(data))
 		return false, nil
 	})
@@ -389,6 +397,26 @@ func handleUpdateGeoData(geoType string, geoName string, fn func(value string)) 
 	go func() {
 		path := constant.Path.Resolve(geoName)
 		switch geoType {
+		case "LGBM-PRESET":
+			if err := installSmartModelPresetCompat(geoName); err != nil {
+				fn(err.Error())
+				return
+			}
+		case "LGBM-IMPORT":
+			if err := importSmartModelCompat(geoName); err != nil {
+				fn(err.Error())
+				return
+			}
+		case "LGBM":
+			if err := updateLgbmModelCompat(); err != nil {
+				fn(err.Error())
+				return
+			}
+		case "LGBM-LITE":
+			if err := restoreBundledLiteCompat(); err != nil {
+				fn(err.Error())
+				return
+			}
 		case "MMDB":
 			err := updateMMDBWithPathCompat(path)
 			if err != nil {
@@ -424,6 +452,7 @@ func handleUpdateExternalProvider(providerName string, fn func(value string)) {
 			fn(err.Error())
 			return
 		}
+		notifyProviderUpdatedCompat(providerName)
 		fn("")
 	}()
 }
@@ -442,6 +471,7 @@ func handleSideLoadExternalProvider(providerName string, data []byte, fn func(va
 			fn(err.Error())
 			return
 		}
+		notifyProviderUpdatedCompat(providerName)
 		fn("")
 	}()
 }
@@ -751,6 +781,10 @@ func handleUpdateConfig(bytes []byte) string {
 	err := json.Unmarshal(bytes, params)
 	if err != nil {
 		return err.Error()
+	}
+	if params.Tun != nil && params.Tun.MTU != nil &&
+		(*params.Tun.MTU < 1280 || *params.Tun.MTU > 65535) {
+		return "invalid TUN MTU: expected 1280..65535"
 	}
 	updateConfig(params)
 	return ""

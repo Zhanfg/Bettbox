@@ -129,6 +129,18 @@ abstract class ProxyGroup with _$ProxyGroup {
     @JsonKey(fromJson: _parseBool) bool? hidden,
     String? icon,
     @JsonKey(fromJson: _parseInt) int? tolerance,
+    @JsonKey(name: 'policy-priority') String? policyPriority,
+    @JsonKey(name: 'uselightgbm', fromJson: _parseBool) bool? useLightGBM,
+    @JsonKey(name: 'collectdata', fromJson: _parseBool) bool? collectData,
+    @JsonKey(name: 'sample-rate') num? sampleRate,
+    @JsonKey(name: 'prefer-asn', fromJson: _parseBool) bool? preferASN,
+    @JsonKey(name: 'prefer-ipv4', fromJson: _parseBool) bool? preferIPv4,
+    @JsonKey(name: 'require-ipv4', fromJson: _parseBool) bool? requireIPv4,
+    @JsonKey(name: 'require-ipv6', fromJson: _parseBool) bool? requireIPv6,
+    @JsonKey(name: 'auto-ip-family', fromJson: _parseBool) bool? autoIPFamily,
+    String? country,
+    @JsonKey(name: 'country-affinity', fromJson: _parseBool)
+    bool? countryAffinity,
   }) = _ProxyGroup;
 
   factory ProxyGroup.fromJson(Map<String, Object?> json) =>

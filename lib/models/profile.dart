@@ -85,6 +85,13 @@ abstract class Profile with _$Profile {
     @Default(true) bool useScriptOverride,
     String? ageSecretKey,
     @JsonKey(name: 'group-switches') @Default({}) Map<String, bool> groupSwitches,
+    // Non-destructive Smart policy overrides survive subscription refreshes.
+    @JsonKey(name: 'smart-policies')
+    @Default({}) Map<String, Map<String, dynamic>> smartPolicies,
+    @JsonKey(name: 'smart-group-overrides')
+    @Default({}) Set<String> smartGroupOverrides,
+    @JsonKey(name: 'smart-previous-selections')
+    @Default({}) Map<String, String> smartPreviousSelections,
   }) = _Profile;
 
   factory Profile.fromJson(Map<String, Object?> json) =>

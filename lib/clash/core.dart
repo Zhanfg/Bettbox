@@ -5,6 +5,7 @@ import 'dart:isolate';
 
 import 'package:bett_box/clash/clash.dart';
 import 'package:bett_box/clash/interface.dart';
+import 'package:bett_box/clash/smart_lite_model.dart';
 import 'package:bett_box/common/common.dart';
 import 'package:bett_box/enum/enum.dart';
 import 'package:bett_box/models/models.dart';
@@ -54,6 +55,9 @@ class ClashCore {
 
   Future<bool> init() async {
     await initGeo();
+    // Guarantee offline model availability before initializing Smart.
+    // The existing active model is never overwritten by this bootstrap.
+    await SmartLiteModel.provision();
     final homeDirPath = await appPath.homeDirPath;
     return await clashInterface.init(
       InitParams(homeDir: homeDirPath, version: globalState.appState.version),
@@ -77,6 +81,9 @@ class ClashCore {
   FutureOr<String> decryptAgeConfig(String data, String ageSecretKey) {
     return clashInterface.decryptAgeConfig(data, ageSecretKey);
   }
+
+  /// Explicit local backup only. Never called by automatic WebDAV backup.
+  Future<String> exportSmartLearning() => clashInterface.exportSmartLearning();
 
   Future<String> updateConfig(UpdateParams updateParams) async {
     return await clashInterface.updateConfig(updateParams);
@@ -147,6 +154,20 @@ class ClashCore {
       }).whereType<Map<String, dynamic>>().toList();
       return groupsRaw.map((e) => Group.fromJson(e)).toList();
     });
+  }
+
+  Future<List<Map<String, dynamic>>> getSmartRankings(String groupName) async {
+    final data = await clashInterface.getSmartRankings(groupName);
+    if (data.isEmpty) return [];
+    final decoded = json.decode(data);
+    if (decoded is! Map) throw const FormatException('Invalid Smart ranking response');
+    if (decoded['error'] != null) throw StateError(decoded['error'].toString());
+    final weights = decoded['weights'];
+    if (weights is! List) return [];
+    return weights
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
   }
 
   FutureOr<String> changeProxy(ChangeProxyParams changeProxyParams) async {

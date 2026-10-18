@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:bett_box/clash/clash.dart';
+import 'package:bett_box/clash/smart_learning_policy.dart';
 import 'package:bett_box/common/theme.dart';
 import 'package:bett_box/enum/enum.dart';
 import 'package:bett_box/l10n/l10n.dart';
@@ -1113,6 +1114,61 @@ class GlobalState {
               rules[i] = parsed.copyWith(ruleTarget: 'PASS').value;
             }
           }
+        }
+      }
+    }
+
+    // Opt-in migration changes only the in-memory config. Smart learns
+    // online from completed connections, and our bundled LightGBM is usable
+    // immediately on first conversion. Raw CSV collection stays optional.
+    if (targetProfile.smartGroupOverrides.isNotEmpty &&
+        rawConfig['proxy-groups'] is List) {
+      for (final group in rawConfig['proxy-groups'] as List) {
+        if (group is! Map) continue;
+        enableSmartLearningForConvertedGroup(
+          group,
+          targetProfile.smartGroupOverrides,
+        );
+      }
+    }
+
+    // One learning identity per Bettbox profile, even if two subscriptions
+    // reuse identical names like "Auto". Preserve ambiguous legacy records
+    // in cache.db rather than silently attributing them to the wrong profile.
+    if (rawConfig['proxy-groups'] is List) {
+      final learningScope = smartLearningScopeForProfile(profileId);
+      for (final group in rawConfig['proxy-groups'] as List) {
+        if (group is Map) applySmartLearningScope(group, learningScope);
+      }
+    }
+
+    // Apply app-local Smart preferences only to Smart proxy groups. The
+    // subscribed YAML stays immutable and these preferences survive updates.
+    // Do not turn other group types into Smart or mutate unknown keys.
+    if (targetProfile.smartPolicies.isNotEmpty &&
+        rawConfig['proxy-groups'] is List) {
+      const supported = <String>{
+        'country',
+        'policy-priority',
+        'country-affinity',
+        'prefer-asn',
+        'auto-ip-family',
+        'prefer-ipv4',
+        'require-ipv4',
+        'require-ipv6',
+        'uselightgbm',
+        'collectdata',
+        'sample-rate',
+      };
+      for (final group in rawConfig['proxy-groups'] as List) {
+        if (group is! Map || group['type'] != 'smart') continue;
+        final name = group['name'];
+        if (name is! String) continue;
+        final overrides = targetProfile.smartPolicies[name];
+        if (overrides == null) continue;
+        for (final entry in overrides.entries) {
+          if (!supported.contains(entry.key)) continue;
+          group[entry.key] = entry.value;
         }
       }
     }

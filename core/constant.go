@@ -63,6 +63,8 @@ type tunSchema struct {
 	RouteAddress          *[]netip.Prefix    `yaml:"route-address" json:"route-address,omitempty"`
 	RouteExcludeAddress   *[]netip.Prefix    `yaml:"route-exclude-address" json:"route-exclude-address,omitempty"`
 	StrictRoute           *bool              `yaml:"strict-route" json:"strict-route,omitempty"`
+	MTU                   *uint32            `yaml:"mtu" json:"mtu,omitempty"`
+	EndpointIndependentNat *bool             `yaml:"endpoint-independent-nat" json:"endpoint-independent-nat,omitempty"`
 	DisableICMPForwarding *bool              `yaml:"disable-icmp-forwarding" json:"disable-icmp-forwarding,omitempty"`
 	CongestionController  *string            `yaml:"congestion-controller" json:"congestion-controller,omitempty"`
 }
@@ -99,6 +101,8 @@ const (
 	decryptAgeConfigMethod         Method = "decryptAgeConfig"
 	updateConfigMethod             Method = "updateConfig"
 	getProxiesMethod               Method = "getProxies"
+	getSmartRankingsMethod         Method = "getSmartRankings"
+	exportSmartLearningMethod       Method = "exportSmartLearning"
 	changeProxyMethod              Method = "changeProxy"
 	getTrafficMethod               Method = "getTraffic"
 	getTotalTrafficMethod          Method = "getTotalTraffic"

@@ -36,6 +36,10 @@ mixin ClashInterface {
 
   FutureOr<Map> getProxies();
 
+  FutureOr<String> getSmartRankings(String groupName);
+
+  Future<String> exportSmartLearning();
+
   FutureOr<String> changeProxy(ChangeProxyParams changeProxyParams);
 
   Future<bool> startListener();
@@ -296,6 +300,23 @@ abstract class ClashHandlerInterface with ClashInterface {
     return invoke<Map>(
       method: ActionMethod.getProxies,
       timeout: Duration(seconds: 5),
+    );
+  }
+
+  @override
+  Future<String> exportSmartLearning() {
+    return invoke<String>(
+      method: ActionMethod.exportSmartLearning,
+      timeout: const Duration(seconds: 30),
+    );
+  }
+
+  @override
+  Future<String> getSmartRankings(String groupName) {
+    return invoke<String>(
+      method: ActionMethod.getSmartRankings,
+      data: groupName,
+      timeout: const Duration(seconds: 5),
     );
   }
 

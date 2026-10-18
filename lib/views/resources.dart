@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:bett_box/clash/clash.dart';
+import 'package:bett_box/clash/smart_lite_model.dart';
 import 'package:bett_box/common/common.dart';
 import 'package:bett_box/models/models.dart';
 import 'package:bett_box/providers/config.dart';
 import 'package:bett_box/state.dart';
 import 'package:bett_box/widgets/widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' hide context;
 
@@ -128,7 +130,10 @@ class ResourcesView extends ConsumerWidget {
         ),
         children: [
           ...generateSection(
-            items: geoItems.map((geoItem) => GeoDataListItem(geoItem: geoItem)),
+            items: [
+              ...geoItems.map((geoItem) => GeoDataListItem(geoItem: geoItem)),
+              if (system.isWindows) const SmartLiteResourceItem(),
+            ],
           ),
         ],
       ),
@@ -373,4 +378,195 @@ class _UpdateGeoUrlFormDialogState extends State<UpdateGeoUrlFormDialog> {
       ),
     );
   }
+}
+
+
+/// Smart is additive to the original Resources screen. Model downloads
+/// remain in the existing resource/update workflow, not a separate app page.
+class SmartLiteResourceItem extends ConsumerStatefulWidget {
+  const SmartLiteResourceItem({super.key});
+
+  @override
+  ConsumerState<SmartLiteResourceItem> createState() =>
+      _SmartLiteResourceItemState();
+}
+
+class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
+  late Future<SmartLiteModelStatus> _status;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    _status = SmartLiteModel.status();
+  }
+
+  // All model operations use Bettbox's existing resource IPC, never a
+  // second download manager. The core validates feature schema before any
+  // model is activated and retains the original bundled Lite fallback.
+  Future<void> _modelAction(String type, String value) async {
+    final notifier = ref.read(geoUpdatingKeysProvider.notifier);
+    if (ref.read(geoUpdatingKeysProvider).contains('lgbm')) return;
+    await globalState.appController.safeRun<void>(
+      () async {
+        notifier.update((state) => Set.of(state)..add('lgbm'));
+        try {
+          final message = await clashCore.updateGeoData(
+            UpdateGeoDataParams(geoName: value, geoType: type),
+          );
+          if (message.isNotEmpty) throw StateError(message);
+        } finally {
+          notifier.update((state) => Set.of(state)..remove('lgbm'));
+          if (mounted) setState(_refresh);
+        }
+      },
+      silence: false,
+      needLoading: false,
+    );
+  }
+
+  Future<void> _importLocal() async {
+    final selected = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['bin', 'txt'],
+      withData: false,
+    );
+    if (selected == null || selected.files.isEmpty) return;
+    final path = selected.files.single.path;
+    if (path == null || path.isEmpty) return;
+    await _modelAction('LGBM-IMPORT', path);
+  }
+
+  Future<void> _chooseModel() async {
+    if (ref.read(geoUpdatingKeysProvider).contains('lgbm')) return;
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('选择 Smart 模型'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogContext, 'lite'),
+            child: const ListTile(
+              leading: Icon(Icons.offline_bolt_outlined),
+              title: Text('Lite · 9.3 MB'),
+              subtitle: Text('随包内置，无需联网，可随时恢复'),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogContext, 'middle'),
+            child: const ListTile(
+              leading: Icon(Icons.download_outlined),
+              title: Text('Middle · 18.4 MB'),
+              subtitle: Text('按需下载并缓存'),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogContext, 'large'),
+            child: const ListTile(
+              leading: Icon(Icons.download_outlined),
+              title: Text('Large · 26.8 MB'),
+              subtitle: Text('按需下载并缓存'),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || chosen == null) return;
+    await _modelAction('LGBM-PRESET', chosen);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final syncing = ref.watch(
+      geoUpdatingKeysProvider.select((s) => s.contains('lgbm')),
+    );
+    return ListItem(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: const Icon(Icons.model_training_outlined),
+      title: const Text('Smart 模型'),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 6),
+          FutureBuilder<SmartLiteModelStatus>(
+            future: _status,
+            builder: (_, snapshot) {
+              final info = snapshot.data;
+              if (snapshot.hasError) {
+                return Text(
+                  '模型状态读取失败：${snapshot.error}',
+                  style: context.textTheme.bodyMedium,
+                );
+              }
+              if (info == null) return const LinearProgressIndicator();
+              return Text(
+                '当前：${info.activePreset} · '
+                '${info.fallbackVerified ? '内置 Lite 回退可用' : '回退模型不可用'}',
+                style: context.textTheme.bodyMedium,
+              );
+            },
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '首次启动使用内置 Lite；可选更大模型，原有资源不受影响。',
+            style: context.textTheme.bodyMedium?.toLight,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 6,
+            children: [
+              CommonChip(
+                avatar: const Icon(Icons.swap_horiz),
+                label: '切换模型',
+                onPressed: syncing ? null : _chooseModel,
+              ),
+              CommonChip(
+                avatar: const Icon(Icons.folder_open),
+                label: '导入模型',
+                onPressed: syncing ? null : _importLocal,
+              ),
+              if (syncing)
+                const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text('模型维护'),
+            subtitle: const Text('更新当前模型、排障与手动恢复'),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: syncing
+                      ? null
+                      : () => _modelAction('LGBM', SmartLiteModel.activeName),
+                  icon: const Icon(Icons.sync),
+                  label: const Text('更新在线模型'),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: syncing
+                      ? null
+                      : () => _modelAction('LGBM-PRESET', 'lite'),
+                  icon: const Icon(Icons.restore),
+                  label: const Text('恢复内置 Lite'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
 }

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/provider"
 	"github.com/metacubex/mihomo/component/updater"
@@ -54,4 +55,26 @@ func setRequestNotifyCompat(fn func(statistic.Tracker)) {
 
 func setProviderLoadedHookCompat(fn func(string)) {
 	executor.DefaultProviderLoadedHook = fn
+}
+
+
+// Legacy Mihomo already emits these notifications from its own hooks.
+// Keep the explicit-operation bridge Smart-only to avoid duplicate events.
+func notifyDelayResultCompat(_ *Delay) {}
+func notifyProviderUpdatedCompat(_ string) {}
+
+func updateLgbmModelCompat() error {
+	return fmt.Errorf("Smart LightGBM is unavailable in legacy core")
+}
+
+func restoreBundledLiteCompat() error {
+	return fmt.Errorf("bundled Smart Lite model is unavailable in legacy core")
+}
+
+func installSmartModelPresetCompat(_ string) error {
+	return fmt.Errorf("Smart model presets are unavailable in legacy core")
+}
+
+func importSmartModelCompat(_ string) error {
+	return fmt.Errorf("Smart model import is unavailable in legacy core")
 }

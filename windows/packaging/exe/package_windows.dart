@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive_io.dart';
 import 'package:args/args.dart';
+import 'package:crypto/crypto.dart';
 import 'package:liquid_engine/liquid_engine.dart';
 import 'package:path/path.dart' as path;
 import 'package:yaml/yaml.dart';
@@ -61,6 +62,22 @@ void main(List<String> arguments) async {
     print('Error: Source directory $sourceDir does not exist. Run flutter build first.');
     exit(1);
   }
+
+  // Release gate: the first downloadable Windows package MUST include a
+  // verified Lite model. This applies to preview and official installers,
+  // not just one CI workflow.
+  final liteAsset = File(path.join(
+    sourceDir, 'data', 'flutter_assets', 'assets', 'data', 'Model-Lite.bin'));
+  const expectedLiteHash =
+      '23633022a815fb34e510befe1c176ba50af3ced48f08b172454f4cd6b8327788';
+  if (!liteAsset.existsSync() || liteAsset.lengthSync() != 9345218) {
+    throw StateError('Windows release missing bundled Lite fallback');
+  }
+  final actualLiteHash = await sha256.bind(liteAsset.openRead()).first;
+  if (actualLiteHash.toString() != expectedLiteHash) {
+    throw StateError('Windows release has unverified Lite fallback bytes');
+  }
+  print('Verified offline Lite fallback inside Windows release');
 
   // 4. Map variables for Inno Setup template
   final coreExecutableName = isDev ? 'BettboxDevCore.exe' : 'BettboxCore.exe';
