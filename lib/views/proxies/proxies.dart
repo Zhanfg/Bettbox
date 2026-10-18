@@ -50,7 +50,7 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
     final hasCustom = hasScriptCustom || hasGroupCustom;
     final hasSmartGroups = ref.watch(
       groupsProvider.select(
-        (groups) => groups.any((group) => group.type == GroupType.Smart),
+        (groups) => groups.any((group) => group.name != 'GLOBAL'),
       ),
     );
     return [
