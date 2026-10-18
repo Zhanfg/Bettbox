@@ -1117,6 +1117,22 @@ class GlobalState {
       }
     }
 
+    // Opt-in group type migration is profile-local and reversible. Do not
+    // rewrite the user's subscription, or automatically convert GLOBAL.
+    if (targetProfile.smartGroupOverrides.isNotEmpty &&
+        rawConfig['proxy-groups'] is List) {
+      for (final group in rawConfig['proxy-groups'] as List) {
+        if (group is! Map || group['name'] is! String) continue;
+        final name = group['name'] as String;
+        if (name == 'GLOBAL' ||
+            !targetProfile.smartGroupOverrides.contains(name)) continue;
+        if (const {'select', 'url-test', 'fallback', 'load-balance'}
+            .contains(group['type'])) {
+          group['type'] = 'smart';
+        }
+      }
+    }
+
     // Apply app-local Smart preferences only to Smart proxy groups. The
     // subscribed YAML stays immutable and these preferences survive updates.
     // Do not turn other group types into Smart or mutate unknown keys.
