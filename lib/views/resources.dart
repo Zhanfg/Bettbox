@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bett_box/clash/clash.dart';
+import 'package:bett_box/clash/smart_lite_model.dart';
 import 'package:bett_box/common/common.dart';
 import 'package:bett_box/models/models.dart';
 import 'package:bett_box/providers/config.dart';
@@ -128,7 +129,10 @@ class ResourcesView extends ConsumerWidget {
         ),
         children: [
           ...generateSection(
-            items: geoItems.map((geoItem) => GeoDataListItem(geoItem: geoItem)),
+            items: [
+              ...geoItems.map((geoItem) => GeoDataListItem(geoItem: geoItem)),
+              if (system.isWindows) const SmartLiteResourceItem(),
+            ],
           ),
         ],
       ),
@@ -368,6 +372,130 @@ class _UpdateGeoUrlFormDialogState extends State<UpdateGeoUrlFormDialog> {
             minLines: 1,
             controller: urlController,
             decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// Smart is additive to the original Resources screen. Model downloads
+/// remain in the existing resource/update workflow, not a separate app page.
+class SmartLiteResourceItem extends ConsumerStatefulWidget {
+  const SmartLiteResourceItem({super.key});
+
+  @override
+  ConsumerState<SmartLiteResourceItem> createState() =>
+      _SmartLiteResourceItemState();
+}
+
+class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
+  late Future<SmartLiteModelStatus> _status;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    _status = SmartLiteModel.status();
+  }
+
+  Future<void> _update({required bool restore}) async {
+    final notifier = ref.read(geoUpdatingKeysProvider.notifier);
+    if (ref.read(geoUpdatingKeysProvider).contains('lgbm')) return;
+    await globalState.appController.safeRun<void>(
+      () async {
+        notifier.update((state) => Set.of(state)..add('lgbm'));
+        try {
+          final message = await clashCore.updateGeoData(
+            UpdateGeoDataParams(
+              geoName: restore
+                  ? SmartLiteModel.fallbackName
+                  : SmartLiteModel.activeName,
+              geoType: restore ? 'LGBM-LITE' : 'LGBM',
+            ),
+          );
+          if (message.isNotEmpty) throw StateError(message);
+        } finally {
+          notifier.update((state) => Set.of(state)..remove('lgbm'));
+          if (mounted) setState(_refresh);
+        }
+      },
+      silence: false,
+      needLoading: false,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final syncing = ref.watch(
+      geoUpdatingKeysProvider.select((s) => s.contains('lgbm')),
+    );
+    return ListItem(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      title: const Text('Smart · Lite Model'),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 6),
+          FutureBuilder<SmartLiteModelStatus>(
+            future: _status,
+            builder: (_, snapshot) {
+              final info = snapshot.data;
+              if (snapshot.hasError) {
+                return Text(
+                  'Cannot inspect Lite model: ${snapshot.error}',
+                  style: context.textTheme.bodyMedium,
+                );
+              }
+              if (info == null) {
+                return const LinearProgressIndicator();
+              }
+              final active = !info.activeExists
+                  ? 'Missing'
+                  : info.activeIsLite
+                      ? 'Lite baseline'
+                      : 'Updated / custom model';
+              final fallback = info.fallbackVerified
+                  ? 'Offline Lite fallback verified'
+                  : 'Offline fallback unavailable';
+              return Text(
+                'Active: $active · $fallback',
+                style: context.textTheme.bodyMedium,
+              );
+            },
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Bundled verified Lite baseline (9.3 MB); updates modify only '
+            'Model.bin, not the offline Model-Lite.bin fallback.',
+            style: context.textTheme.bodyMedium?.toLight,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            runSpacing: 6,
+            spacing: 12,
+            children: [
+              CommonChip(
+                avatar: syncing
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync),
+                label: const Text('Update model'),
+                onPressed: syncing ? null : () => _update(restore: false),
+              ),
+              CommonChip(
+                avatar: const Icon(Icons.restore),
+                label: const Text('Restore bundled Lite'),
+                onPressed: syncing ? null : () => _update(restore: true),
+              ),
+            ],
           ),
         ],
       ),
