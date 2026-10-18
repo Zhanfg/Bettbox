@@ -487,12 +487,12 @@ class _SmartLiteResourceItemState extends ConsumerState<SmartLiteResourceItem> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.sync),
-                label: const Text('Update model'),
+                label: 'Update model',
                 onPressed: syncing ? null : () => _update(restore: false),
               ),
               CommonChip(
                 avatar: const Icon(Icons.restore),
-                label: const Text('Restore bundled Lite'),
+                label: 'Restore bundled Lite',
                 onPressed: syncing ? null : () => _update(restore: true),
               ),
             ],
