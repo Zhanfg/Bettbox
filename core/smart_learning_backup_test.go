@@ -46,6 +46,25 @@ func TestSmartLearningBackupContainsOnlyPrivateScopedLearning(t *testing.T) {
 		return nil
 	})
 	if err!=nil { t.Fatal(err) }
+
+	// The identical copy function is used at core startup for pending
+	// backup import. Verify records survive both snapshot and restoration.
+	restored := open("restored.db")
+	defer restored.Close()
+	if err:=dst.View(func(read *bbolt.Tx) error {
+		return restored.Update(func(write *bbolt.Tx) error {
+			return copySmartLearningRecords(read,write)
+		})
+	}); err!=nil { t.Fatal(err) }
+	if err:=restored.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("smart_stats"))
+		if b == nil { t.Fatal("no restored learning bucket") }
+		got:=string(b.Get([]byte("smart/stats/config:bettbox-alpha/Auto/example/node1")))
+		if got != "{\\"success\\":42}" {
+			t.Fatalf("restored learning record mismatch: %s",got)
+		}
+		return nil
+	}); err!=nil { t.Fatal(err) }
 }
 
 func TestSmartLearningBackupRejectsUnexpectedKeys(t *testing.T) {
