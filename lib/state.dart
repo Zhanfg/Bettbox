@@ -1132,6 +1132,16 @@ class GlobalState {
       }
     }
 
+    // One learning identity per Bettbox profile, even if two subscriptions
+    // reuse identical names like "Auto". Preserve ambiguous legacy records
+    // in cache.db rather than silently attributing them to the wrong profile.
+    if (rawConfig['proxy-groups'] is List) {
+      final learningScope = smartLearningScopeForProfile(profileId);
+      for (final group in rawConfig['proxy-groups'] as List) {
+        if (group is Map) applySmartLearningScope(group, learningScope);
+      }
+    }
+
     // Apply app-local Smart preferences only to Smart proxy groups. The
     // subscribed YAML stays immutable and these preferences survive updates.
     // Do not turn other group types into Smart or mutate unknown keys.
