@@ -215,7 +215,8 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '仅调整当前代理组；保持订阅原有设置，未修改的高级参数仍使用内核默认值。',
+                '长期学习会自动利用真实连接反馈，无需手动开启采集。'
+                '此处只调整选路偏好；保留订阅中未修改的设置。',
               ),
               const SizedBox(height: 16),
               TextField(
