@@ -1,3 +1,25 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
+/// A non-reversible stable profile identifier, not an on-disk model filename.
+/// Prefix and truncated SHA-256 are enough to prevent unrelated Bettbox
+/// profiles sharing the legacy "config" learning namespace.
+/// The subscription URL and proxy/target names never enter this hash.
+String smartLearningScopeForProfile(String profileId) {
+  if (profileId.isEmpty) {
+    throw ArgumentError.value(profileId, 'profileId', 'Must not be empty');
+  }
+  final digest = sha256.convert(utf8.encode(profileId)).toString();
+  return 'bettbox-${digest.substring(0, 24)}';
+}
+
+/// Apply a local learning scope only to Smart groups in the effective
+/// *in-memory* config. The source subscription stays untouched.
+void applySmartLearningScope(Map group, String scope) {
+  if (group['type'] == 'smart') group['learning-scope'] = scope;
+}
+
 /// Keep the original subscription untouched; this helper only amends the
 /// in-memory copy that Bettbox sends to the running Mihomo configuration.
 ///
