@@ -218,132 +218,92 @@ class _SmartInsightsViewState extends ConsumerState<SmartInsightsView> {
     );
   }
 
+  // The normal view shows one actionable status line per Smart group.
+  // Low-level diagnostics exist, but never occupy the primary workflow.
   Widget _groupCard(BuildContext context, Group group) {
+    final pinned = group.fixed?.isNotEmpty == true;
+    final profile = ref.watch(currentProfileProvider);
+    final converted = profile?.smartGroupOverrides.contains(group.name) ?? false;
     final path = group.pathProfile;
     final endToEnd = group.endToEnd;
-    final pin = group.fixed ?? '';
-    final isPinned = pin.isNotEmpty;
-    final wasConverted = ref.watch(currentProfileProvider)
-            ?.smartGroupOverrides.contains(group.name) ??
-        false;
-    final lastNode = path?['node'];
-    final lastTarget = endToEnd?['target'];
-    final country = group.country;
-    final routeFresh = endToEnd?['freshNetwork'] == true;
+    final recentNode = _display(path?['node'], missing: '');
+    final description = pinned
+        ? '已固定：${group.fixed}'
+        : recentNode.isNotEmpty
+            ? '自动选择 · 最近使用 $recentNode'
+            : '自动选择 · 由内核决定节点';
 
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.auto_awesome_outlined),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    group.name,
-                    style: Theme.of(context).textTheme.titleMedium,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Chip(
-                  label: Text(isPinned ? 'Pinned' : 'Automatic'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            _field('Manual pin', isPinned ? pin : 'None — Smart chooses per target'),
-            _field('Last observed route', _display(lastNode)),
-            _field('Last destination', _display(lastTarget)),
-            _field(
-              'End-to-end sample',
-              endToEnd == null
-                  ? 'No sample yet'
-                  : routeFresh ? 'Current network' : 'Previous network',
-            ),
-            const Divider(),
-            Text('Routing policy', style: Theme.of(context).textTheme.titleSmall),
-            _field('Country', (country == null || country.isEmpty) ? 'Any' : country),
-            _field('Country affinity', _yesNo(group.countryAffinity)),
-            _field('Auto IP family', _yesNo(group.autoIPFamily)),
-            _field('Prefer ASN', _yesNo(group.preferASN)),
-            _field('Prefer IPv4 / IPv6',
-                '${_yesNo(group.preferIPv4)} / ${_yesNo(group.preferIPv6)}'),
-            _field('Require IPv4 / IPv6',
-                '${_yesNo(group.requireIPv4)} / ${_yesNo(group.requireIPv6)}'),
-            _field('Expert weighting', _yesNo(group.useLightGBM)),
-            _field('Learning data', _yesNo(group.collectData)),
-            _field('Sample rate', _display(group.sampleRate)),
-            if (path != null) ...[
-              const Divider(),
-              Text('Last path observation', style: Theme.of(context).textTheme.titleSmall),
-              _field('Tunnel condition', _display(path['tunnelState'])),
-              _field('Confidence', _display(path['confidence'])),
-              _field('Tunnel RTT (ms)', _display(path['tunnelRTT'])),
-              _field('Tunnel loss', _display(path['tunnelLoss'])),
-              _field('Egress country', _display(path['egressCountry'])),
-              _field('Egress consistency', _display(path['egressConsistent'])),
-              _field('UDP available', _display(path['udpAvailable'])),
-            ],
-            if (endToEnd != null) ...[
-              const Divider(),
-              Text('Last connection sample', style: Theme.of(context).textTheme.titleSmall),
-              _field('Connection (ms)', _display(endToEnd['connectTimeMs'])),
-              _field('First response (ms)', _display(endToEnd['firstResponseMs'])),
-              _field('Loss ratio', _display(endToEnd['lossRate'])),
-              _field('Failed', _display(endToEnd['failed'])),
-            ],
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: OutlinedButton.icon(
-                onPressed: () => _showRankings(context, group.name),
-                icon: const Icon(Icons.leaderboard_outlined),
-                label: const Text('Real node ranking'),
-              ),
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ExpansionTile(
+        key: PageStorageKey('smart-group-${group.name}'),
+        leading: const Icon(Icons.auto_awesome_outlined),
+        title: Text(group.name, overflow: TextOverflow.ellipsis),
+        subtitle: Text(description, maxLines: 1, overflow: TextOverflow.ellipsis),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        children: [
+          _field('选路状态', pinned ? '手动固定' : '自动'),
+          _field('偏好地区', (group.country?.isNotEmpty ?? false) ? group.country! : '不限制'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            alignment: WrapAlignment.end,
+            children: [
+              TextButton.icon(
+                icon: const Icon(Icons.tune),
+                label: const Text('偏好设置'),
                 onPressed: () {
                   showDialog<void>(
                     context: context,
                     builder: (_) => SmartPolicyEditor(group: group),
                   );
                 },
-                icon: const Icon(Icons.tune),
-                label: const Text('Edit Smart policy'),
               ),
-            ),
-            if (wasConverted)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () => _restoreOriginalGroup(context, ref, group),
-                  icon: const Icon(Icons.restore),
-                  label: const Text('Restore original group type'),
-                ),
+              TextButton.icon(
+                icon: const Icon(Icons.leaderboard_outlined),
+                label: const Text('节点排名'),
+                onPressed: () => _showRankings(context, group.name),
               ),
-            if (isPinned) ...[
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: OutlinedButton.icon(
+              if (pinned)
+                TextButton.icon(
+                  icon: const Icon(Icons.auto_mode),
+                  label: const Text('恢复自动选择'),
                   onPressed: () {
                     final controller = globalState.appController;
                     controller.updateCurrentSelectedMap(group.name, '');
                     controller.changeProxyDebounce(group.name, '');
                   },
-                  icon: const Icon(Icons.auto_mode),
-                  label: const Text('Return to automatic routing'),
                 ),
-              ),
+              if (converted)
+                TextButton.icon(
+                  icon: const Icon(Icons.restore),
+                  label: const Text('恢复原代理组'),
+                  onPressed: () => _restoreOriginalGroup(context, ref, group),
+                ),
             ],
-          ],
-        ),
+          ),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text('详细诊断'),
+            subtitle: const Text('仅在排障时查看链路及算法指标'),
+            children: [
+              _field('最后访问目标', _display(endToEnd?['target'])),
+              _field('网络观测', _display(path?['tunnelState'])),
+              _field('RTT (ms)', _display(path?['tunnelRTT'])),
+              _field('丢包率', _display(path?['tunnelLoss'])),
+              _field('置信度', _display(path?['confidence'])),
+              _field('出口国家', _display(path?['egressCountry'])),
+              _field('ASN 优先', _yesNo(group.preferASN)),
+              _field('自动 IP 族', _yesNo(group.autoIPFamily)),
+              _field('IPv4 强制 / IPv6 强制',
+                  '${_yesNo(group.requireIPv4)} / ${_yesNo(group.requireIPv6)}'),
+              _field('模型评分', _yesNo(group.useLightGBM)),
+              _field('采样率', _display(group.sampleRate)),
+              _field('建立连接 (ms)', _display(endToEnd?['connectTimeMs'])),
+              _field('首包响应 (ms)', _display(endToEnd?['firstResponseMs'])),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -365,13 +325,12 @@ class _SmartInsightsViewState extends ConsumerState<SmartInsightsView> {
       padding: const EdgeInsets.all(12),
       children: [
         ListTile(
-          title: const Text('Smart V11 diagnostics'),
+          title: const Text('智能选路'),
           subtitle: const Text(
-            'Shows actual core snapshots, not simulated scores. '
-            'Smart may select a different node for each destination.',
+            '默认自动选择合适节点；点击代理组可调整偏好或查看状态。',
           ),
           trailing: IconButton(
-            tooltip: 'Refresh core snapshot',
+            tooltip: '刷新选路状态',
             icon: const Icon(Icons.refresh),
             onPressed: () => globalState.appController.updateGroupsDebounce(),
           ),
@@ -379,22 +338,22 @@ class _SmartInsightsViewState extends ConsumerState<SmartInsightsView> {
         if (smartGroups.isEmpty)
           const Padding(
             padding: EdgeInsets.all(24),
-            child: Text('No Smart proxy groups in the active profile.'),
+            child: Text('当前没有智能代理组。原有代理功能不受影响。'),
           ),
         ...smartGroups.map((group) => _groupCard(context, group)),
         if (candidates.isNotEmpty)
           ExpansionTile(
-            title: const Text('Enable Smart for an existing group'),
+            title: const Text('高级操作 · 将现有代理组改为智能选路'),
             subtitle: const Text(
-              'Local reversible conversion; original subscription unchanged.',
+              '按需启用，可随时恢复；不会更改原始订阅。',
             ),
             children: candidates.map(
               (group) => ListTile(
                 title: Text(group.name),
-                subtitle: Text('Currently ${group.type.name}'),
+                subtitle: Text('现有类型：${group.type.name}'),
                 trailing: OutlinedButton(
                   onPressed: () => _enableSmart(context, ref, group),
-                  child: const Text('Enable Smart'),
+                  child: const Text('启用'),
                 ),
               ),
             ).toList(),
