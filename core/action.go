@@ -99,6 +99,14 @@ func handleAction(action *Action, result ActionResult) {
 	case getProxiesMethod:
 		result.success(handleGetProxies())
 		return
+	case exportSmartLearningMethod:
+		path, err := exportSmartLearningSnapshot()
+		if err != nil {
+			result.error(err.Error())
+		} else {
+			result.success(path)
+		}
+		return
 	case getSmartRankingsMethod:
 		name, ok := action.Data.(string)
 		if !ok {
