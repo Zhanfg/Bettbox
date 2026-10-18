@@ -304,6 +304,14 @@ abstract class ClashHandlerInterface with ClashInterface {
   }
 
   @override
+  Future<String> exportSmartLearning() {
+    return invoke<String>(
+      method: ActionMethod.exportSmartLearning,
+      timeout: const Duration(seconds: 30),
+    );
+  }
+
+  @override
   Future<String> getSmartRankings(String groupName) {
     return invoke<String>(
       method: ActionMethod.getSmartRankings,
