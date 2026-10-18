@@ -18,6 +18,12 @@ class SmartLiteModel {
   static const expectedBytes = 9345218;
   static const expectedSha256 =
       '23633022a815fb34e510befe1c176ba50af3ced48f08b172454f4cd6b8327788';
+  static const middleBytes = 18357364;
+  static const middleSha256 =
+      '6a17dffbb29862135c9e3706eabf60488862f578ef9edf60a5d325529873cfaa';
+  static const largeBytes = 26787747;
+  static const largeSha256 =
+      '832920df1290454710dd04aa4c7d4b5324edfd7816a7c9ad2272708b5d5a13a8';
 
   static bool _isValidBytes(Uint8List data) =>
       data.length == expectedBytes &&
@@ -78,11 +84,30 @@ class SmartLiteModel {
     final active = File(p.join(home, activeName));
     final fallback = File(p.join(home, fallbackName));
     final activeExists = await active.exists();
+    final activeSize = activeExists ? await active.length() : 0;
+    String activePreset = activeExists ? 'Custom / unknown' : 'Missing';
+    if (activeExists) {
+      // Only hash known preset sizes. Unknown-sized models remain valid user
+      // candidates; the native Smart model loader is their authority.
+      if (activeSize == expectedBytes ||
+          activeSize == middleBytes ||
+          activeSize == largeBytes) {
+        final digest = (await sha256.bind(active.openRead()).first).toString();
+        if (activeSize == expectedBytes && digest == expectedSha256) {
+          activePreset = 'Lite';
+        } else if (activeSize == middleBytes && digest == middleSha256) {
+          activePreset = 'Middle';
+        } else if (activeSize == largeBytes && digest == largeSha256) {
+          activePreset = 'Large';
+        }
+      }
+    }
     return SmartLiteModelStatus(
       activeExists: activeExists,
-      activeSize: activeExists ? await active.length() : 0,
+      activeSize: activeSize,
       fallbackVerified: await _isValidFile(fallback),
-      activeIsLite: await _isValidFile(active),
+      activeIsLite: activePreset == 'Lite',
+      activePreset: activePreset,
       activeModified: activeExists ? await active.lastModified() : null,
     );
   }
@@ -93,6 +118,7 @@ class SmartLiteModelStatus {
   final int activeSize;
   final bool fallbackVerified;
   final bool activeIsLite;
+  final String activePreset;
   final DateTime? activeModified;
 
   const SmartLiteModelStatus({
@@ -100,6 +126,7 @@ class SmartLiteModelStatus {
     required this.activeSize,
     required this.fallbackVerified,
     required this.activeIsLite,
+    required this.activePreset,
     required this.activeModified,
   });
 }
