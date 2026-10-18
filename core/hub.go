@@ -777,6 +777,10 @@ func handleUpdateConfig(bytes []byte) string {
 	if err != nil {
 		return err.Error()
 	}
+	if params.Tun != nil && params.Tun.MTU != nil &&
+		(*params.Tun.MTU < 1280 || *params.Tun.MTU > 65535) {
+		return "invalid TUN MTU: expected 1280..65535"
+	}
 	updateConfig(params)
 	return ""
 }
