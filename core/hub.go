@@ -392,6 +392,16 @@ func handleUpdateGeoData(geoType string, geoName string, fn func(value string)) 
 	go func() {
 		path := constant.Path.Resolve(geoName)
 		switch geoType {
+		case "LGBM-PRESET":
+			if err := installSmartModelPresetCompat(geoName); err != nil {
+				fn(err.Error())
+				return
+			}
+		case "LGBM-IMPORT":
+			if err := importSmartModelCompat(geoName); err != nil {
+				fn(err.Error())
+				return
+			}
 		case "LGBM":
 			if err := updateLgbmModelCompat(); err != nil {
 				fn(err.Error())
