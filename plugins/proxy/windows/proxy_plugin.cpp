@@ -8,6 +8,7 @@
 #include <RasError.h>
 #include <vector>
 #include <array>
+#include <map>
 #include <functional>
 #include <iostream>
 
@@ -24,31 +25,73 @@
 #include <memory>
 #include <sstream>
 
-// Only the Windows Flutter plugin may mutate interactive-user WinINet state.
-// Track ownership so a session shutdown cannot clear an unrelated user proxy.
+// WinINet user proxy settings are shared with other Windows applications.
+// Treat the lifecycle as a reversible transaction; never reset settings
+// which no longer match the values this process applied.
 namespace {
-bool proxy_owned_by_this_process = false;
+struct ProxySettings {
+  std::wstring connection;
+  DWORD flags = PROXY_TYPE_DIRECT;
+  std::wstring server;
+  std::wstring bypass;
+  std::wstring auto_config_url;
+};
 
-bool apply_connection_options(
-    const wchar_t* connection,
-    DWORD flags,
-    const std::wstring* server,
-    const std::wstring* bypass) {
-  std::array<INTERNET_PER_CONN_OPTION, 3> options{};
+std::map<std::wstring, ProxySettings> original_settings;
+bool proxy_owned_by_this_process = false;
+std::wstring owned_server;
+std::wstring owned_bypass;
+
+bool read_connection(const std::wstring& name, ProxySettings* snapshot) {
+  if (!snapshot) return false;
+  std::array<INTERNET_PER_CONN_OPTION, 4> options{};
   options[0].dwOption = INTERNET_PER_CONN_FLAGS;
-  options[0].Value.dwValue = flags;
-  DWORD count = 1;
-  if (server != nullptr && bypass != nullptr) {
-    options[1].dwOption = INTERNET_PER_CONN_PROXY_SERVER;
-    options[1].Value.pszValue = const_cast<LPWSTR>(server->c_str());
-    options[2].dwOption = INTERNET_PER_CONN_PROXY_BYPASS;
-    options[2].Value.pszValue = const_cast<LPWSTR>(bypass->c_str());
-    count = 3;
-  }
+  options[1].dwOption = INTERNET_PER_CONN_PROXY_SERVER;
+  options[2].dwOption = INTERNET_PER_CONN_PROXY_BYPASS;
+  options[3].dwOption = INTERNET_PER_CONN_AUTOCONFIG_URL;
   INTERNET_PER_CONN_OPTION_LIST list{};
   list.dwSize = sizeof(list);
-  list.pszConnection = const_cast<LPWSTR>(connection);
-  list.dwOptionCount = count;
+  list.pszConnection = name.empty() ? nullptr : const_cast<LPWSTR>(name.c_str());
+  list.dwOptionCount = static_cast<DWORD>(options.size());
+  list.pOptions = options.data();
+  DWORD size = sizeof(list);
+  if (InternetQueryOption(
+      nullptr, INTERNET_OPTION_PER_CONNECTION_OPTION, &list, &size) == FALSE) {
+    // The caller must not change a Windows proxy without an original snapshot.
+    for (int i = 1; i < 4; ++i) {
+      if (options[i].Value.pszValue) GlobalFree(options[i].Value.pszValue);
+    }
+    return false;
+  }
+  snapshot->connection = name;
+  snapshot->flags = options[0].Value.dwValue;
+  if (options[1].Value.pszValue)
+    snapshot->server = options[1].Value.pszValue;
+  if (options[2].Value.pszValue)
+    snapshot->bypass = options[2].Value.pszValue;
+  if (options[3].Value.pszValue)
+    snapshot->auto_config_url = options[3].Value.pszValue;
+  for (int i = 1; i < 4; ++i) {
+    if (options[i].Value.pszValue) GlobalFree(options[i].Value.pszValue);
+  }
+  return true;
+}
+
+bool write_connection(const ProxySettings& value) {
+  std::array<INTERNET_PER_CONN_OPTION, 4> options{};
+  options[0].dwOption = INTERNET_PER_CONN_FLAGS;
+  options[0].Value.dwValue = value.flags;
+  options[1].dwOption = INTERNET_PER_CONN_PROXY_SERVER;
+  options[1].Value.pszValue = const_cast<LPWSTR>(value.server.c_str());
+  options[2].dwOption = INTERNET_PER_CONN_PROXY_BYPASS;
+  options[2].Value.pszValue = const_cast<LPWSTR>(value.bypass.c_str());
+  options[3].dwOption = INTERNET_PER_CONN_AUTOCONFIG_URL;
+  options[3].Value.pszValue = const_cast<LPWSTR>(value.auto_config_url.c_str());
+  INTERNET_PER_CONN_OPTION_LIST list{};
+  list.dwSize = sizeof(list);
+  list.pszConnection = value.connection.empty()
+      ? nullptr : const_cast<LPWSTR>(value.connection.c_str());
+  list.dwOptionCount = static_cast<DWORD>(options.size());
   list.pOptions = options.data();
   return InternetSetOption(
       nullptr, INTERNET_OPTION_PER_CONNECTION_OPTION, &list, sizeof(list)) != FALSE;
@@ -71,9 +114,8 @@ bool for_each_ras_entry(const std::function<bool(const wchar_t*)>& op) {
   }
   if (result != ERROR_SUCCESS) return false;
   bool success = true;
-  for (DWORD index = 0; index < count; ++index) {
-    // Keep processing other connection entries if one Windows API call fails.
-    if (!op(data[index].szEntryName)) success = false;
+  for (DWORD i = 0; i < count; ++i) {
+    if (!op(data[i].szEntryName)) success = false;
   }
   return success;
 }
@@ -81,6 +123,12 @@ bool for_each_ras_entry(const std::function<bool(const wchar_t*)>& op) {
 void broadcast_proxy_changed() {
   InternetSetOption(nullptr, INTERNET_OPTION_SETTINGS_CHANGED, nullptr, 0);
   InternetSetOption(nullptr, INTERNET_OPTION_REFRESH, nullptr, 0);
+}
+
+bool current_is_ours(const ProxySettings& current) {
+  return (current.flags & PROXY_TYPE_PROXY) &&
+      current.server == owned_server &&
+      current.bypass == owned_bypass;
 }
 }  // namespace
 
@@ -91,33 +139,84 @@ bool startProxy(const int port, const flutter::EncodableList& bypassDomain) {
   for (const auto& domain : bypassDomain) {
     const auto* value = std::get_if<std::string>(&domain);
     if (!value) return false;
-    // Proxy bypass patterns are typically ASCII DNS names. Reject malformed
-    // encodings rather than dereferencing mismatched temporary iterators.
     bypass += L";";
     bypass.append(value->begin(), value->end());
   }
-  const DWORD flags = PROXY_TYPE_DIRECT | PROXY_TYPE_PROXY;
-  const bool lan = apply_connection_options(nullptr, flags, &server, &bypass);
-  if (!lan) return false;
+  if (proxy_owned_by_this_process &&
+      server == owned_server && bypass == owned_bypass) return true;
+
+  // Snapshot *every* affected Windows LAN/RAS entry BEFORE touching any.
+  std::vector<std::wstring> names{L""};
+  if (!for_each_ras_entry([&](const wchar_t* name) {
+    names.emplace_back(name);
+    return true;
+  })) return false;
+  std::vector<ProxySettings> before;
+  before.reserve(names.size());
+  for (const auto& name : names) {
+    ProxySettings original{};
+    if (!read_connection(name, &original)) return false;
+    // Preserve another application's live changes while already managing
+    // the system proxy. We must not reassert our own settings over them.
+    if (proxy_owned_by_this_process && original_settings.count(name) &&
+        !current_is_ours(original)) return false;
+    before.push_back(std::move(original));
+  }
+
+  std::size_t applied = 0;
+  for (const auto& previous : before) {
+    ProxySettings desired = previous;
+    desired.flags = PROXY_TYPE_DIRECT | PROXY_TYPE_PROXY;
+    desired.server = server;
+    desired.bypass = bypass;
+    desired.auto_config_url.clear();
+    if (!write_connection(desired)) {
+      // Roll back only entries we successfully changed; no partial takeover.
+      for (std::size_t i = 0; i < applied; ++i)
+        write_connection(before[i]);
+      if (applied) broadcast_proxy_changed();
+      return false;
+    }
+    ++applied;
+  }
+  for (const auto& previous : before) {
+    if (!original_settings.count(previous.connection)) {
+      original_settings.emplace(previous.connection, previous);
+    }
+  }
+  owned_server = server;
+  owned_bypass = bypass;
   proxy_owned_by_this_process = true;
-  const bool ras = for_each_ras_entry([&](const wchar_t* name) {
-    return apply_connection_options(name, flags, &server, &bypass);
-  });
   broadcast_proxy_changed();
-  return ras;
+  return true;
 }
 
 bool stopProxy() {
   if (!proxy_owned_by_this_process) return true;
-  const bool lan = apply_connection_options(
-      nullptr, PROXY_TYPE_DIRECT, nullptr, nullptr);
-  const bool ras = for_each_ras_entry([&](const wchar_t* name) {
-    return apply_connection_options(
-        name, PROXY_TYPE_DIRECT, nullptr, nullptr);
-  });
-  if (lan && ras) proxy_owned_by_this_process = false;
-  broadcast_proxy_changed();
-  return lan && ras;
+  bool success = true;
+  bool changed = false;
+  for (const auto& [name, original] : original_settings) {
+    ProxySettings current{};
+    if (!read_connection(name, &current)) {
+      success = false;
+      continue;
+    }
+    // User/third-party changes take precedence over app-owned values.
+    if (!current_is_ours(current)) continue;
+    if (!write_connection(original)) {
+      success = false;
+      continue;
+    }
+    changed = true;
+  }
+  if (success) {
+    original_settings.clear();
+    owned_server.clear();
+    owned_bypass.clear();
+    proxy_owned_by_this_process = false;
+  }
+  if (changed) broadcast_proxy_changed();
+  return success;
 }
 
 namespace proxy
