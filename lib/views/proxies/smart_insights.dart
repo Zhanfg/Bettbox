@@ -243,6 +243,7 @@ class _SmartInsightsViewState extends ConsumerState<SmartInsightsView> {
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         children: [
           _field('选路状态', pinned ? '手动固定' : '自动'),
+          _field('长期学习', '自动 · 根据真实连接反馈调整'),
           _field('偏好地区', (group.country?.isNotEmpty ?? false) ? group.country! : '不限制'),
           Wrap(
             spacing: 8,
