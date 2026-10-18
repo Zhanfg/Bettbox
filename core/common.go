@@ -194,9 +194,18 @@ func updateConfig(params *UpdateParams) {
 		return
 	}
 	general := currentConfig.General
+	// Compare the actual runtime listener parameters. Control-only settings
+	// must not invoke TUN's OnReload or recreate mixed-port sockets.
+	oldTun := general.Tun
+	oldMixedPort := general.MixedPort
+	oldAllowLan := general.AllowLan
+	oldInterface := general.Interface
 	wasDebug := general.LogLevel == log.DEBUG
 	if params.MixedPort != nil {
 		general.MixedPort = *params.MixedPort
+	}
+	if params.AllowLan != nil {
+		general.AllowLan = *params.AllowLan
 	}
 	if params.Sniffing != nil {
 		general.Sniffing = *params.Sniffing
@@ -273,6 +282,12 @@ func updateConfig(params *UpdateParams) {
 		if params.Tun.StrictRoute != nil {
 			general.Tun.StrictRoute = *params.Tun.StrictRoute
 		}
+		if params.Tun.MTU != nil {
+			general.Tun.MTU = *params.Tun.MTU
+		}
+		if params.Tun.EndpointIndependentNat != nil {
+			general.Tun.EndpointIndependentNat = *params.Tun.EndpointIndependentNat
+		}
 		general.Tun.DNSHijack = *params.Tun.DNSHijack
 		general.Tun.Stack = *params.Tun.Stack
 		general.Tun.DisableICMPForwarding = *params.Tun.DisableICMPForwarding
@@ -281,7 +296,16 @@ func updateConfig(params *UpdateParams) {
 		}
 	}
 
-	updateListeners()
+	// Mihomo already handles real TUN deltas in PatchTun. Avoid even
+	// entering that update path for log, mode, sampling and other unrelated
+	// control-plane changes. The retained source/destination listeners and
+	// Windows adapter stay intact when their configuration has not changed.
+	if oldMixedPort != general.MixedPort ||
+		oldAllowLan != general.AllowLan ||
+		oldInterface != general.Interface ||
+		!oldTun.Equal(general.Tun) {
+		updateListeners()
+	}
 }
 
 var (
