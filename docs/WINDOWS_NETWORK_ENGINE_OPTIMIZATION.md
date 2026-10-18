@@ -25,6 +25,27 @@ Keep the original Bettbox Windows UI. No new performance-mode switch, driver rep
 8. **Reduce copies and allocations selectively:** profile Go heap allocations, connection tracking, DNS parser, UDP session churn and Flutter IPC. Keep control-plane callbacks batched or queue bounded. Do not introduce lock-free or polling changes without representative Windows tracing.
 9. **Mixed proxy listener:** reuse the same local listener during profile and model switches when port/protocol settings are unchanged. Debounce OS proxy notifications. HTTP keep-alive, DNS caches and Smart destination state must not be forcibly reset on every UI update.
 
+
+## 2026-10-18 — TUN-first implementation checkpoint
+
+Primary usage is now **Windows TUN**, especially for applications outside the system-proxy-aware set. System proxy remains a parallel supported mode. Retain original Bettbox switches; no new "high-performance / power saving" toggle or automatic stealth downgrade.
+
+Source comparisons:
+- [Clash Verge Rev](https://github.com/clash-verge-rev/clash-verge-rev): privileged service/core readiness state and restore/recovery orchestration. The existing Bettbox Rust Helper remains; do not blindly transplant a different service.
+- [sing-box TUN docs](https://sing-box.sagernet.org/configuration/inbound/tun/): route auto-detect, Windows strict-route DNS-leak tradeoff and mixed/system/gVisor stack compatibility. Bettbox already emits `auto-detect-interface: true` on Windows.
+- [Wintun](https://www.wintun.net/): retain signed, mature Windows virtual NIC plus event-driven receive. No unverified driver swap or busy-spin polling.
+- [v2rayN](https://github.com/2dust/v2rayN): preserve a clean user-facing modes/cores separation; integrations are not drop-in ABI equivalents.
+
+**Code-level fixes now on this draft branch:**
+1. `NetworkListView.TUNItem` invokes the same authorization/serialized core-apply path as the dashboard and tray, not merely a Flutter state mutation.
+2. TUN authorization denial rolls back the requested UI state. Never leave the TUN toggle "on" when the privilege check failed.
+3. Runtime `tunSchema` now carries MTU (`uint32`) and endpoint-independent NAT (`bool`), which were dropped before reaching `LC.Tun`. Reject MTU outside 1280–65535 before mutation.
+4. Live `updateConfig` uses actual MTU/NAT fields and skips `updateListeners()` for control-only changes. The upstream `PatchTun` still checks full config/route exclusions when a relevant listener property changes.
+5. Windows CI runs `core/network_mode_config_test.go` with Smart build tags and keeps the original Flutter regression suite.
+6. Read-only local sampler `tool/windows_network_benchmark.ps1` captures comparable per-process CPU and memory while TUN or system proxy is selected. It makes no OS network changes and explicitly is **not** a power/latency/packet benchmark.
+
+**Not claimed complete:** real-machine TUN route/DNS transitions, driver start/stop fault injection, UDP/QUIC/IPv6 regressions, coexistence with Hyper-V/WSL2/other VPNs, sleep/resume, persisted crash proxy restoration, and actual battery power vs idle latency. No percentage improvements can be claimed until the same workload has been compared on Windows. Keep PR #1 as Draft until verified.
+
 ## Suggested state machine
 
 Each mode has **Off -> Preparing -> Running -> Recovering -> Stopping -> Off**, with **Failed** (including OS privilege denied) as an explicit state.
