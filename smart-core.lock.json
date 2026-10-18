@@ -3,7 +3,7 @@
   "repository": "https://github.com/Zhanfg/mihomo.git",
   "repository_full_name": "Zhanfg/mihomo",
   "ref": "integration/bettbox-feature-parity",
-  "commit": "827fee0c726046483e610ff4c4c0c48251f13478",
+  "commit": "8d546db13ef65040c6be4549adef082ee77a147e",
   "module": "github.com/metacubex/mihomo",
   "go_version": "1.25.0",
   "profile": "smart-portable",
