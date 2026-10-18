@@ -72,6 +72,51 @@ class SmartInsightsView extends ConsumerWidget {
     return value ? 'Yes' : 'No';
   }
 
+  Future<void> _showRankings(BuildContext context, String groupName) async {
+    try {
+      final weights = await clashCore.getSmartRankings(groupName);
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('Smart rankings · $groupName'),
+          content: SizedBox(
+            width: 470,
+            height: 380,
+            child: weights.isEmpty
+                ? const Center(child: Text(
+                    'No ranking has been learned yet. Generate traffic and retry.',
+                  ))
+                : ListView.builder(
+                    itemCount: weights.length,
+                    itemBuilder: (_, index) {
+                      final item = weights[index];
+                      return ListTile(
+                        leading: CircleAvatar(child: Text('${index + 1}')),
+                        title: Text(_display(item['Name'])),
+                        subtitle: Text(_display(item['Rank'])),
+                        trailing: Text(_display(item['Weight'])),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text('Smart ranking unavailable: $e')),
+        );
+      }
+    }
+  }
+
   Widget _field(String title, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -167,6 +212,14 @@ class SmartInsightsView extends ConsumerWidget {
               _field('Failed', _display(endToEnd['failed'])),
             ],
             const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: () => _showRankings(context, group.name),
+                icon: const Icon(Icons.leaderboard_outlined),
+                label: const Text('Real node ranking'),
+              ),
+            ),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
