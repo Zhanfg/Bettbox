@@ -54,21 +54,6 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
       ),
     );
     return [
-      if (hasSmartGroups)
-        IconButton(
-          tooltip: 'Smart V11 diagnostics',
-          icon: const Icon(Icons.auto_awesome_outlined),
-          onPressed: () {
-            showExtend(
-              context,
-              builder: (_, type) => AdaptiveSheetScaffold(
-                type: type,
-                title: 'Smart V11',
-                body: const SmartInsightsView(),
-              ),
-            );
-          },
-        ),
       if (_isTab)
         IconButton(
           onPressed: () {
@@ -122,6 +107,21 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
                     builder: (_, type) {
                       return ProvidersView(type: type);
                     },
+                  );
+                },
+              ),
+            if (hasSmartGroups)
+              PopupMenuItemData(
+                icon: Icons.auto_awesome_outlined,
+                label: '智能选路',
+                onPressed: () {
+                  showExtend(
+                    context,
+                    builder: (_, type) => AdaptiveSheetScaffold(
+                      type: type,
+                      title: '智能选路',
+                      body: const SmartInsightsView(),
+                    ),
                   );
                 },
               ),
