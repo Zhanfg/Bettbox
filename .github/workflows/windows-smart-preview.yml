@@ -76,7 +76,7 @@ jobs:
       - name: Test original Bettbox models, proxy UI and Smart extension
         shell: pwsh
         run: |
-          flutter test test/models test/views/proxies test/plugins test/smart_group_contract_test.dart
+          flutter test test/models test/views/proxies test/plugins test/smart_group_contract_test.dart test/smart_model_catalog_test.dart
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify pinned Smart V11 source
