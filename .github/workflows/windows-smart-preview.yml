@@ -73,6 +73,21 @@ jobs:
           dart run build_runner build --delete-conflicting-outputs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Validate optional Windows network benchmark syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'tool/windows_network_benchmark.ps1').Path,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | Format-List | Out-String | Write-Host
+            throw 'Windows network benchmark script has syntax errors'
+          }
+
       - name: Test original Bettbox models, proxy UI and Smart extension
         shell: pwsh
         run: |
