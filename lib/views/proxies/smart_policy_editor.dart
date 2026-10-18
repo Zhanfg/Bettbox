@@ -25,16 +25,20 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
   late final Map<String, bool> _flags;
   bool _saving = false;
   String? _error;
+  final Set<String> _changedFlags = <String>{};
+  late String _initialCountry;
+  late String _initialSampleRate;
+  late String _initialPolicyPriority;
 
   static const _labels = <String, String>{
-    'country-affinity': 'Country affinity (soft preference)',
-    'prefer-asn': 'Group destinations by ASN',
-    'auto-ip-family': 'Adapt to IPv4 / IPv6 availability',
-    'prefer-ipv4': 'Prefer IPv4',
-    'require-ipv4': 'Require IPv4',
-    'require-ipv6': 'Require IPv6',
-    'uselightgbm': 'Enable expert weight model',
-    'collectdata': 'Collect Smart training statistics',
+    'country-affinity': '优先匹配国家',
+    'prefer-asn': '优先 ASN 路由',
+    'auto-ip-family': '自动适配 IPv4 / IPv6',
+    'prefer-ipv4': '优先 IPv4',
+    'require-ipv4': '只允许 IPv4',
+    'require-ipv6': '只允许 IPv6',
+    'uselightgbm': '使用 Smart 模型评分',
+    'collectdata': '收集训练样本',
   };
 
   @override
@@ -66,6 +70,9 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
       for (final key in _labels.keys)
         key: (saved[key] as bool?) ?? base[key] ?? false,
     };
+    _initialCountry = _country.text;
+    _initialSampleRate = _sampleRate.text;
+    _initialPolicyPriority = _policyPriority.text;
   }
 
   @override
@@ -91,8 +98,9 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
       setState(() => _error = 'Country must be a two-letter ISO code.');
       return;
     }
-    if (!reset && (sampleRate == null || !sampleRate.isFinite ||
-        sampleRate <= 0 || sampleRate > 1)) {
+    if (!reset && _sampleRate.text.trim() != _initialSampleRate.trim() &&
+        (sampleRate == null || !sampleRate.isFinite ||
+            sampleRate <= 0 || sampleRate > 1)) {
       setState(() => _error = 'Sample rate must be in (0, 1].');
       return;
     }
@@ -107,12 +115,33 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
     if (reset) {
       proposed.remove(widget.group.name);
     } else {
-      proposed[widget.group.name] = {
-        'country': country,
-        'sample-rate': sampleRate!,
-        'policy-priority': _policyPriority.text.trim(),
-        ..._flags,
-      };
+      // Preserve the profile/subscription defaults. Writing every switch,
+      // including untouched false values, silently disabled upstream features.
+      final overrides = Map<String, dynamic>.from(
+        proposed[widget.group.name] ?? const <String, dynamic>{},
+      );
+      if (country != _initialCountry.trim().toUpperCase()) {
+        overrides['country'] = country;
+      }
+      if (_sampleRate.text.trim() != _initialSampleRate.trim()) {
+        overrides['sample-rate'] = sampleRate!;
+      }
+      if (_policyPriority.text.trim() != _initialPolicyPriority.trim()) {
+        final priority = _policyPriority.text.trim();
+        if (priority.isEmpty) {
+          overrides.remove('policy-priority');
+        } else {
+          overrides['policy-priority'] = priority;
+        }
+      }
+      for (final key in _changedFlags) {
+        overrides[key] = _flags[key]!;
+      }
+      if (overrides.isEmpty) {
+        proposed.remove(widget.group.name);
+      } else {
+        proposed[widget.group.name] = overrides;
+      }
     }
 
     setState(() {
@@ -151,7 +180,7 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Smart policy · ${widget.group.name}'),
+      title: Text('智能选路偏好 · ${widget.group.name}'),
       content: SizedBox(
         width: 510,
         child: SingleChildScrollView(
@@ -160,49 +189,88 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'These preferences override only this Smart group in the '
-                'active profile. The original subscription is unchanged.',
+                '仅调整当前代理组；保持订阅原有设置，未修改的高级参数仍使用内核默认值。',
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: _country,
                 maxLength: 2,
                 decoration: const InputDecoration(
-                  labelText: 'Preferred country (ISO 3166-1 alpha-2)',
-                  hintText: 'e.g. JP, US; blank = any',
+                  labelText: '优先国家 / 地区（可选）',
+                  hintText: '例如 JP、US；留空表示不指定',
                   border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _sampleRate,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'Learning sample rate',
-                  helperText: '0 < rate ≤ 1',
-                  border: OutlineInputBorder(),
-                ),
+              const SizedBox(height: 4),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('自动适配 IPv4 / IPv6'),
+                subtitle: const Text('推荐开启，由内核判断可用性'),
+                value: _flags['auto-ip-family'] ?? false,
+                onChanged: _saving
+                    ? null
+                    : (value) => setState(() {
+                        _flags['auto-ip-family'] = value;
+                        _changedFlags.add('auto-ip-family');
+                      }),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _policyPriority,
-                decoration: const InputDecoration(
-                  labelText: 'Advanced policy priority',
-                  helperText: 'Leave blank for the core default',
-                  border: OutlineInputBorder(),
-                ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('使用模型辅助选路'),
+                subtitle: const Text('需要可用的 LightGBM 模型；不影响普通代理组'),
+                value: _flags['uselightgbm'] ?? false,
+                onChanged: _saving
+                    ? null
+                    : (value) => setState(() {
+                        _flags['uselightgbm'] = value;
+                        _changedFlags.add('uselightgbm');
+                      }),
               ),
-              const SizedBox(height: 8),
-              ..._labels.entries.map(
-                (item) => SwitchListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(item.value),
-                  value: _flags[item.key] ?? false,
-                  onChanged: _saving
-                      ? null
-                      : (value) => setState(() => _flags[item.key] = value),
-                ),
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                initiallyExpanded: false,
+                title: const Text('高级参数'),
+                subtitle: const Text('ASN、强制 IP 族及样本采集等'),
+                children: [
+                  TextField(
+                    controller: _policyPriority,
+                    decoration: const InputDecoration(
+                      labelText: '节点优先级表达式',
+                      helperText: '留空时采用内核或订阅中的配置',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sampleRate,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: '样本采集比例',
+                      helperText: '仅在开启样本采集时使用，范围 (0, 1]',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  ..._labels.entries
+                      .where((item) =>
+                          item.key != 'auto-ip-family' &&
+                          item.key != 'uselightgbm')
+                      .map(
+                        (item) => SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(item.value),
+                          value: _flags[item.key] ?? false,
+                          onChanged: _saving
+                              ? null
+                              : (value) => setState(() {
+                                  _flags[item.key] = value;
+                                  _changedFlags.add(item.key);
+                                }),
+                        ),
+                      ),
+                ],
               ),
               if (_error != null) ...[
                 const SizedBox(height: 10),
@@ -215,15 +283,15 @@ class _SmartPolicyEditorState extends ConsumerState<SmartPolicyEditor> {
       actions: [
         TextButton(
           onPressed: _saving ? null : () => _save(reset: true),
-          child: const Text('Reset overrides'),
+          child: const Text('恢复默认'),
         ),
         TextButton(
           onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: const Text('取消'),
         ),
         FilledButton(
           onPressed: _saving ? null : _save,
-          child: Text(_saving ? 'Applying…' : 'Save and reload core'),
+          child: Text(_saving ? '正在应用…' : '保存'),
         ),
       ],
     );
