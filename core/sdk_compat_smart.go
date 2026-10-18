@@ -204,3 +204,11 @@ func updateLgbmModelCompat() error {
 func restoreBundledLiteCompat() error {
 	return updater.RestoreBundledLiteModel()
 }
+
+func installSmartModelPresetCompat(name string) error {
+	return updater.InstallSmartModelPreset(name)
+}
+
+func importSmartModelCompat(path string) error {
+	return updater.ImportSmartModelFile(path)
+}
