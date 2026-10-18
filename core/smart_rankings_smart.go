@@ -40,7 +40,8 @@ func handleGetSmartRankings(name string) string {
     if err != nil {
         return fail(err.Error())
     }
-    if ranking == nil {
+    // Smart V11 returns NodeRank by value, not *NodeRank.
+    if len(ranking.Result) == 0 {
         return `{"weights":[]}`
     }
     data, err := json.Marshal(map[string]any{
