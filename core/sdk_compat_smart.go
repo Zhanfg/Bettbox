@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 
 	"github.com/metacubex/mihomo/adapter/provider"
 	"github.com/metacubex/mihomo/component/profile/cachefile"
@@ -13,6 +15,7 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/listener"
 	LC "github.com/metacubex/mihomo/listener/config"
+	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel"
 	"github.com/metacubex/mihomo/tunnel/statistic"
 )
@@ -100,7 +103,34 @@ func updateGeoSiteWithPathCompat(path string) error {
 // Dedicated low-overhead lifecycle events will replace these no-ops after the
 // transport/ABI stability gates are green.
 func setURLTestHookCompat(_ func(url, name string, delay uint16)) {}
-func setRequestNotifyCompat(_ func(statistic.Tracker)) {}
+// A bounded worker preserves Bettbox request history/notifications while
+// keeping the Smart tracker join path independent of slow Flutter IPC. Events
+// are observed on connection creation (not on each byte of traffic).
+var (
+	smartRequestEvents  = make(chan statistic.Tracker, 1024)
+	smartRequestWorker  sync.Once
+	smartRequestDropped atomic.Uint64
+)
+
+func setRequestNotifyCompat(fn func(statistic.Tracker)) {
+	smartRequestWorker.Do(func() {
+		go func() {
+			for tracker := range smartRequestEvents {
+				fn(tracker)
+			}
+		}()
+	})
+	statistic.SetRequestNotifyHook(func(tracker statistic.Tracker) {
+		select {
+		case smartRequestEvents <- tracker:
+		default:
+			n := smartRequestDropped.Add(1)
+			if n == 1 || n%1024 == 0 {
+				log.Warnln("[Bettbox] request event queue saturated; dropped=%d", n)
+			}
+		}
+	})
+}
 func setProviderLoadedHookCompat(_ func(string)) {}
 
  
