@@ -70,3 +70,11 @@ func updateLgbmModelCompat() error {
 func restoreBundledLiteCompat() error {
 	return fmt.Errorf("bundled Smart Lite model is unavailable in legacy core")
 }
+
+func installSmartModelPresetCompat(_ string) error {
+	return fmt.Errorf("Smart model presets are unavailable in legacy core")
+}
+
+func importSmartModelCompat(_ string) error {
+	return fmt.Errorf("Smart model import is unavailable in legacy core")
+}
