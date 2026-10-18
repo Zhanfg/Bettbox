@@ -38,6 +38,8 @@ mixin ClashInterface {
 
   FutureOr<String> getSmartRankings(String groupName);
 
+  Future<String> exportSmartLearning();
+
   FutureOr<String> changeProxy(ChangeProxyParams changeProxyParams);
 
   Future<bool> startListener();
