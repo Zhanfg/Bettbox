@@ -51,8 +51,12 @@ class SmartLiteModel {
   /// user-installed active Model.bin. Network access is never required.
   static Future<void> provision() async {
     if (!system.isWindows) return;
-    final bytes = (await rootBundle.load(assetPath)).buffer;
-    final data = Uint8List.view(bytes);
+    final asset = await rootBundle.load(assetPath);
+    final data = Uint8List.view(
+      asset.buffer,
+      asset.offsetInBytes,
+      asset.lengthInBytes,
+    );
     if (!_isValidBytes(data)) {
       throw const FormatException(
         'The application package is missing a verified Lite model.',
