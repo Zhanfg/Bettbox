@@ -136,7 +136,7 @@ jobs:
             # Smart build has already completed.
             Copy-Item -LiteralPath smart.mod -Destination go.mod -Force
             Copy-Item -LiteralPath smart.sum -Destination go.sum -Force
-            go test -tags=bettbox_smart_portable -count=1 -run 'Test(TunUpdateSchemaKeepsPerformanceAndCompatibilityFields|TUNListenerStableAcrossControlOnlySettings|TunSchemaRejectsUnsupportedType)' .
+            go test -tags=bettbox_smart_portable -count=1 -run 'Test(TunUpdateSchemaKeepsPerformanceAndCompatibilityFields|TUNListenerStableAcrossControlOnlySettings|TunSchemaRejectsUnsupportedType|SmartLearningBackupContainsOnlyPrivateScopedLearning|SmartLearningBackupRejectsUnexpectedKeys)' .
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Pop-Location
