@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/provider"
 	"github.com/metacubex/mihomo/component/updater"
@@ -61,3 +62,11 @@ func setProviderLoadedHookCompat(fn func(string)) {
 // Keep the explicit-operation bridge Smart-only to avoid duplicate events.
 func notifyDelayResultCompat(_ *Delay) {}
 func notifyProviderUpdatedCompat(_ string) {}
+
+func updateLgbmModelCompat() error {
+	return fmt.Errorf("Smart LightGBM is unavailable in legacy core")
+}
+
+func restoreBundledLiteCompat() error {
+	return fmt.Errorf("bundled Smart Lite model is unavailable in legacy core")
+}
