@@ -234,6 +234,15 @@ jobs:
           "EXE_SIGNING_POLICY_SLUG=$exePolicy" | Out-File -FilePath $env:GITHUB_ENV -Append
           "INSTALLER_SIGNING_POLICY_SLUG=$installerPolicy" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      # Official Windows build must carry the same offline Lite baseline as
+      # the preview pipeline. Fail rather than ship a model-less installer.
+      - name: Fetch verified Lite fallback (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          & ./tool/fetch_lite_model.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build Core (Windows)
         if: matrix.platform == 'windows'
         shell: bash
