@@ -1812,7 +1812,7 @@ class AppController {
         null;
   }
 
-  Future<List<int>> backupData() async {
+  Future<List<int>> backupData({bool includeSmartLearning = false}) async {
     final homeDirPath = await appPath.homeDirPath;
     final profilesPath = await appPath.profilesPath;
     final configJson = globalState.config.toJson();
@@ -1837,7 +1837,18 @@ class AppController {
       'Starting backup: ${validProfileIds.length} profiles, current: $currentProfileId',
     );
 
-    return Isolate.run<List<int>>(() async {
+    // Only explicit, local exports contain learning history. Snapshotting
+    // inside the core avoids copying an open bbolt DB and leaking unrelated
+    // cache records. Never enable this for scheduled WebDAV backups.
+    final learningSnapshot = includeSmartLearning
+        ? await clashCore.exportSmartLearning()
+        : null;
+    if (includeSmartLearning && (learningSnapshot == null || learningSnapshot.isEmpty)) {
+      throw StateError('Smart learning snapshot could not be created');
+    }
+
+    try {
+      return await Isolate.run<List<int>>(() async {
       // Use ZipFileEncoder like FLClash - more reliable than ZipEncoder + Archive
       final tempDir = Directory.systemTemp;
       final tempZipPath = join(
@@ -1925,6 +1936,13 @@ class AppController {
         }
       }
 
+      if (learningSnapshot != null) {
+        final snapshot = File(learningSnapshot);
+        if (!await snapshot.exists()) {
+          throw StateError('Smart learning snapshot disappeared during backup');
+        }
+        await encoder.addFile(snapshot, 'smart-learning/smart.db');
+      }
       encoder.close();
 
       // Read the zip file and return bytes
@@ -1932,7 +1950,15 @@ class AppController {
       final bytes = await zipFile.readAsBytes();
       await zipFile.delete();
       return bytes;
-    });
+      });
+    } finally {
+      // Backup data can contain target/network fingerprints. It must not
+      // remain as a readable temporary database once ZIP creation ends.
+      if (learningSnapshot != null) {
+        final tmp = File(learningSnapshot);
+        if (await tmp.exists()) await tmp.delete();
+      }
+    }
   }
 
   Future<void> updateTray([
