@@ -59,6 +59,12 @@ jobs:
           flutter-version: '3.44.9'
           cache: true
 
+      - name: Fetch and verify bundled Lite fallback
+        shell: pwsh
+        run: |
+          & ./tool/fetch_lite_model.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Fetch Dart dependencies and generate sources
         shell: pwsh
         run: |
